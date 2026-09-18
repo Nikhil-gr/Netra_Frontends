@@ -114,6 +114,9 @@ export default function WalkAssistPage() {
   const autoStartTimerRef = useRef(null);
 
   const speechRate = useNetraStore((state) => state.speechRate);
+  const walkInitialLocation = useNetraStore(
+    (state) => state.walkInitialLocation,
+  );
   const setWalkDestination = useNetraStore((state) => state.setWalkDestination);
   const setWalkRoute = useNetraStore((state) => state.setWalkRoute);
   const setWalkAssistActive = useNetraStore(
@@ -123,18 +126,23 @@ export default function WalkAssistPage() {
     (state) => state.setWalkAssistPaused,
   );
   const setWalkLastCue = useNetraStore((state) => state.setWalkLastCue);
+  const resetWalkRoute = useNetraStore((state) => state.resetWalkRoute);
   const clearWalkAssist = useNetraStore((state) => state.clearWalkAssist);
 
   const { speak, speakAndWait, stop: stopSpeech } = useSpeechSynthesis();
   const { trigger, isArmed } = useSpokenAction();
 
-  const { getCurrentPosition, isSupported: locationSupported } =
-    useGeolocation();
+  const {
+    getCurrentPosition,
+    isSupported: locationSupported,
+    isSecure: locationSecure,
+  } = useGeolocation();
 
   const {
     isListening,
     error: recognitionError,
     isSupported: recognitionSupported,
+    unsupportedReason,
     listenOnce,
     abortListening,
   } = useSpeechRecognition({
@@ -326,16 +334,30 @@ export default function WalkAssistPage() {
 
     if (!recognitionSupported) {
       setVoiceFallback(true);
-      setStatus("Voice input is unavailable. Type a destination below.");
+      const message =
+        unsupportedReason ||
+        "Automatic voice input is unavailable. Type a destination below.";
 
-      speak(
-        "Where would you like to go? Voice input is unavailable in this browser, so type a destination below.",
-        {
-          language: "en-US",
-          rate: speechRate,
-        },
-      );
+      setStatus(message);
 
+      speak(`Where would you like to go? ${message}`, {
+        language: "en-US",
+        rate: speechRate,
+      });
+
+      return;
+    }
+
+    if (!locationSecure) {
+      const message =
+        "Walk Assist location requires HTTPS on mobile. Open Netra using your HTTPS ngrok link.";
+      setErrorMessage(message);
+      setStatus(message);
+      setVoiceFallback(true);
+      speak(message, {
+        language: "en-US",
+        rate: speechRate,
+      });
       return;
     }
 
@@ -355,7 +377,13 @@ export default function WalkAssistPage() {
 
     try {
       setStatus("Getting your location...");
-      currentLocation = await getCurrentPosition();
+      const hasFreshInitialLocation =
+        walkInitialLocation &&
+        Date.now() - Number(walkInitialLocation.timestamp || 0) < 120000;
+
+      currentLocation = hasFreshInitialLocation
+        ? walkInitialLocation
+        : await getCurrentPosition();
     } catch (error) {
       if (conversationVersionRef.current !== version) {
         return;
@@ -531,16 +559,19 @@ export default function WalkAssistPage() {
     askForConfirmation,
     getCurrentPosition,
     listenOnce,
+    locationSecure,
     locationSupported,
     recognitionSupported,
     saveAndStartRoute,
+    unsupportedReason,
+    walkInitialLocation,
     speak,
     speakAndWait,
     speechRate,
   ]);
 
   useEffect(() => {
-    clearWalkAssist();
+    resetWalkRoute();
 
     autoStartTimerRef.current = window.setTimeout(() => {
       runVoiceConversation();
@@ -555,7 +586,7 @@ export default function WalkAssistPage() {
       abortListening();
       stopSpeech();
     };
-  }, [abortListening, clearWalkAssist, runVoiceConversation, stopSpeech]);
+  }, [abortListening, resetWalkRoute, runVoiceConversation, stopSpeech]);
 
   const handleTypedSearch = async () => {
     const cleanedQuery = query.trim();
@@ -580,7 +611,14 @@ export default function WalkAssistPage() {
     setStatus(`Searching for ${cleanedQuery}...`);
 
     try {
-      const currentLocation = await getCurrentPosition();
+      const hasFreshInitialLocation =
+        walkInitialLocation &&
+        Date.now() - Number(walkInitialLocation.timestamp || 0) < 120000;
+
+      const currentLocation = hasFreshInitialLocation
+        ? walkInitialLocation
+        : await getCurrentPosition();
+
       const items = await searchDestinations(cleanedQuery);
       const sorted = sortDestinationsByDistance(items, currentLocation);
 
@@ -796,7 +834,7 @@ export default function WalkAssistPage() {
           <h2 className="font-semibold text-slate-950">Type destination</h2>
 
           <p className="mt-2 text-sm leading-6 text-slate-600">
-            This is a fallback if automatic voice input is unavailable or not
+            Use this if automatic voice input is unavailable, blocked, or not
             understood.
           </p>
 

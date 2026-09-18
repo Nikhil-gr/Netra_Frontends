@@ -1,9 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-const DEFAULT_OPTIONS = {
+const HIGH_ACCURACY_OPTIONS = {
   enableHighAccuracy: true,
-  timeout: 12000,
-  maximumAge: 3000,
+  timeout: 15000,
+  maximumAge: 5000,
+};
+
+const FALLBACK_OPTIONS = {
+  enableHighAccuracy: false,
+  timeout: 10000,
+  maximumAge: 30000,
 };
 
 const normalizePosition = (position) => ({
@@ -20,10 +26,10 @@ const normalizePosition = (position) => ({
 const getErrorMessage = (error) => {
   switch (error?.code) {
     case 1:
-      return "Location permission was denied. Enable location access to use Walk Assist.";
+      return "Location permission was denied. Allow location access in your browser settings, then open Walk Assist again.";
 
     case 2:
-      return "Your current location is unavailable right now.";
+      return "Your location is temporarily unavailable. Move to an area with a better GPS signal and try again.";
 
     case 3:
       return "Getting your location took too long. Please try again.";
@@ -33,6 +39,11 @@ const getErrorMessage = (error) => {
   }
 };
 
+const getPosition = (options) =>
+  new Promise((resolve, reject) => {
+    navigator.geolocation.getCurrentPosition(resolve, reject, options);
+  });
+
 export function useGeolocation({ enabled = false } = {}) {
   const [location, setLocation] = useState(null);
   const [error, setError] = useState(null);
@@ -40,19 +51,34 @@ export function useGeolocation({ enabled = false } = {}) {
 
   const watchIdRef = useRef(null);
 
+  const isSecure =
+    typeof window !== "undefined" &&
+    (window.isSecureContext || window.location.hostname === "localhost");
+
   const isSupported =
-    typeof navigator !== "undefined" && "geolocation" in navigator;
+    typeof navigator !== "undefined" && "geolocation" in navigator && isSecure;
 
   const stopTracking = useCallback(() => {
-    if (isSupported && watchIdRef.current !== null) {
+    if (
+      typeof navigator !== "undefined" &&
+      "geolocation" in navigator &&
+      watchIdRef.current !== null
+    ) {
       navigator.geolocation.clearWatch(watchIdRef.current);
     }
 
     watchIdRef.current = null;
     setIsTracking(false);
-  }, [isSupported]);
+  }, []);
 
   const startTracking = useCallback(() => {
+    if (!isSecure) {
+      setError(
+        "Walk Assist location requires HTTPS on mobile. Open Netra using your HTTPS ngrok link.",
+      );
+      return false;
+    }
+
     if (!isSupported) {
       setError("Location is not supported by this browser.");
       return false;
@@ -73,41 +99,58 @@ export function useGeolocation({ enabled = false } = {}) {
       },
       (positionError) => {
         setError(getErrorMessage(positionError));
+        setIsTracking(false);
       },
-      DEFAULT_OPTIONS,
+      HIGH_ACCURACY_OPTIONS,
     );
 
     return true;
-  }, [isSupported]);
+  }, [isSecure, isSupported]);
 
-  const getCurrentPosition = useCallback(
-    () =>
-      new Promise((resolve, reject) => {
-        if (!isSupported) {
-          const message = "Location is not supported by this browser.";
-          setError(message);
-          reject(new Error(message));
-          return;
-        }
+  const getCurrentPosition = useCallback(async () => {
+    if (!isSecure) {
+      const message =
+        "Walk Assist location requires HTTPS on mobile. Open Netra using your HTTPS ngrok link.";
 
-        setError(null);
+      setError(message);
+      throw new Error(message);
+    }
 
-        navigator.geolocation.getCurrentPosition(
-          (position) => {
-            const nextLocation = normalizePosition(position);
-            setLocation(nextLocation);
-            resolve(nextLocation);
-          },
-          (positionError) => {
-            const message = getErrorMessage(positionError);
-            setError(message);
-            reject(new Error(message));
-          },
-          DEFAULT_OPTIONS,
-        );
-      }),
-    [isSupported],
-  );
+    if (!isSupported) {
+      const message = "Location is not supported by this browser.";
+
+      setError(message);
+      throw new Error(message);
+    }
+
+    setError(null);
+
+    try {
+      const position = await getPosition(HIGH_ACCURACY_OPTIONS);
+      const nextLocation = normalizePosition(position);
+
+      setLocation(nextLocation);
+      return nextLocation;
+    } catch (firstError) {
+      if (firstError?.code === 1) {
+        const message = getErrorMessage(firstError);
+        setError(message);
+        throw new Error(message);
+      }
+
+      try {
+        const fallbackPosition = await getPosition(FALLBACK_OPTIONS);
+        const nextLocation = normalizePosition(fallbackPosition);
+
+        setLocation(nextLocation);
+        return nextLocation;
+      } catch (fallbackError) {
+        const message = getErrorMessage(fallbackError);
+        setError(message);
+        throw new Error(message);
+      }
+    }
+  }, [isSecure, isSupported]);
 
   useEffect(() => {
     if (enabled) {
@@ -126,6 +169,7 @@ export function useGeolocation({ enabled = false } = {}) {
     error,
     isTracking,
     isSupported,
+    isSecure,
     startTracking,
     stopTracking,
     getCurrentPosition,

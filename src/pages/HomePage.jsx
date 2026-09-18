@@ -4,24 +4,76 @@ import { useNavigate } from "react-router-dom";
 
 import ModeCard from "../components/common/ModeCard.jsx";
 import { useSpokenAction } from "../hooks/accessibilty/useSpokenAction.js";
+import { useNetraStore } from "../store/useNetraStore.js";
+
+const LOCATION_OPTIONS = {
+  enableHighAccuracy: true,
+  timeout: 15000,
+  maximumAge: 5000,
+};
+
+const normalizePosition = (position) => ({
+  latitude: position.coords.latitude,
+  longitude: position.coords.longitude,
+  accuracy: position.coords.accuracy,
+  heading: Number.isFinite(position.coords.heading)
+    ? position.coords.heading
+    : null,
+  speed: Number.isFinite(position.coords.speed) ? position.coords.speed : null,
+  timestamp: position.timestamp,
+});
 
 export default function HomePage() {
   const navigate = useNavigate();
   const { trigger, isArmed } = useSpokenAction();
 
-  const openWalkAssist = async () => {
-    try {
-      if (navigator.mediaDevices?.getUserMedia) {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          audio: true,
-        });
+  const setWalkInitialLocation = useNetraStore(
+    (state) => state.setWalkInitialLocation,
+  );
 
-        stream.getTracks().forEach((track) => track.stop());
-      }
-    } catch {
-      // Walk Assist still opens. The destination page will show text fallback
-      // if microphone permission is unavailable.
+  const requestMicrophonePermission = () => {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      return Promise.resolve(null);
     }
+
+    return navigator.mediaDevices
+      .getUserMedia({ audio: true })
+      .then((stream) => {
+        stream.getTracks().forEach((track) => track.stop());
+        return true;
+      })
+      .catch(() => null);
+  };
+
+  const requestLocationPermission = () => {
+    if (!navigator.geolocation) {
+      return Promise.resolve(null);
+    }
+
+    if (!window.isSecureContext && window.location.hostname !== "localhost") {
+      return Promise.resolve(null);
+    }
+
+    return new Promise((resolve) => {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const location = normalizePosition(position);
+          setWalkInitialLocation(location);
+          resolve(location);
+        },
+        () => resolve(null),
+        LOCATION_OPTIONS,
+      );
+    });
+  };
+
+  const openWalkAssist = async () => {
+    setWalkInitialLocation(null);
+
+    await Promise.allSettled([
+      requestMicrophonePermission(),
+      requestLocationPermission(),
+    ]);
 
     navigate("/walk-assist");
   };
@@ -118,7 +170,8 @@ export default function HomePage() {
           onClick={() =>
             trigger({
               id: "assist",
-              announcement: "Walk assist clicked. Press again to open.",
+              announcement:
+                "Walk assist clicked. Press again to allow microphone and location access and open Walk Assist.",
               action: openWalkAssist,
             })
           }

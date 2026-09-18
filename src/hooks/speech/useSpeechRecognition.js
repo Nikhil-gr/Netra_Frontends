@@ -4,7 +4,7 @@ const getRecognitionErrorMessage = (errorCode) => {
   switch (errorCode) {
     case "not-allowed":
     case "service-not-allowed":
-      return "Microphone permission was denied.";
+      return "Microphone permission was denied. Allow microphone access and try Walk Assist again.";
 
     case "audio-capture":
       return "No microphone is available.";
@@ -29,12 +29,23 @@ export function useSpeechRecognition({ language = "en-US" } = {}) {
   const [isListening, setIsListening] = useState(false);
   const [error, setError] = useState(null);
 
+  const isSecure =
+    typeof window !== "undefined" &&
+    (window.isSecureContext || window.location.hostname === "localhost");
+
   const RecognitionConstructor =
     typeof window !== "undefined"
       ? window.SpeechRecognition || window.webkitSpeechRecognition
       : null;
 
-  const isSupported = Boolean(RecognitionConstructor);
+  const browserSupportsRecognition = Boolean(RecognitionConstructor);
+  const isSupported = browserSupportsRecognition && isSecure;
+
+  const unsupportedReason = !isSecure
+    ? "Automatic voice input requires HTTPS on mobile. Open Netra using your HTTPS ngrok link."
+    : !browserSupportsRecognition
+      ? "Automatic voice recognition is not available in this browser. Use Chrome or Edge for voice input, or type the destination below."
+      : "";
 
   const rejectPending = useCallback((message) => {
     if (!pendingRef.current) {
@@ -124,7 +135,10 @@ export function useSpeechRecognition({ language = "en-US" } = {}) {
     return new Promise((resolve, reject) => {
       if (!isSupported || !recognitionRef.current) {
         reject(
-          new Error("Voice recognition is not supported by this browser."),
+          new Error(
+            unsupportedReason ||
+              "Voice recognition is not supported by this browser.",
+          ),
         );
         return;
       }
@@ -148,10 +162,14 @@ export function useSpeechRecognition({ language = "en-US" } = {}) {
         reject(new Error(message));
       }
     });
-  }, [isSupported]);
+  }, [isSupported, unsupportedReason]);
 
   const startListening = useCallback(() => {
     if (!isSupported || !recognitionRef.current || isListening) {
+      if (!isSupported && unsupportedReason) {
+        setError(unsupportedReason);
+      }
+
       return false;
     }
 
@@ -165,7 +183,7 @@ export function useSpeechRecognition({ language = "en-US" } = {}) {
       setError("Unable to start voice input.");
       return false;
     }
-  }, [isListening, isSupported]);
+  }, [isListening, isSupported, unsupportedReason]);
 
   const stopListening = useCallback(() => {
     if (!recognitionRef.current) {
@@ -200,6 +218,7 @@ export function useSpeechRecognition({ language = "en-US" } = {}) {
     isListening,
     error,
     isSupported,
+    unsupportedReason,
     listenOnce,
     startListening,
     stopListening,

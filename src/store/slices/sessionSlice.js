@@ -1,5 +1,6 @@
 export const createSessionSlice = (set) => ({
   findQuery: "",
+  walkInitialLocation: null,
   walkDestination: null,
   walkRoute: null,
   walkStepIndex: 0,
@@ -8,6 +9,8 @@ export const createSessionSlice = (set) => ({
   walkLastCue: "",
 
   setFindQuery: (findQuery) => set({ findQuery }),
+
+  setWalkInitialLocation: (walkInitialLocation) => set({ walkInitialLocation }),
 
   setWalkDestination: (walkDestination) => set({ walkDestination }),
 
@@ -25,8 +28,19 @@ export const createSessionSlice = (set) => ({
 
   setWalkLastCue: (walkLastCue) => set({ walkLastCue }),
 
+  resetWalkRoute: () =>
+    set({
+      walkDestination: null,
+      walkRoute: null,
+      walkStepIndex: 0,
+      walkAssistActive: false,
+      walkAssistPaused: false,
+      walkLastCue: "",
+    }),
+
   clearWalkAssist: () =>
     set({
+      walkInitialLocation: null,
       walkDestination: null,
       walkRoute: null,
       walkStepIndex: 0,

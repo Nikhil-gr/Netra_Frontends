@@ -5,15 +5,19 @@ export function getObjectPosition(bbox, frameWidth) {
 
   const [x, , width] = bbox;
 
-  const objectCenter = x + width / 2;
+  const leftEdgeRatio = x / frameWidth;
 
-  const positionRatio = objectCenter / frameWidth;
+  const rightEdgeRatio = (x + width) / frameWidth;
 
-  if (positionRatio < 0.35) {
+  const centerLeft = 0.34;
+
+  const centerRight = 0.66;
+
+  if (rightEdgeRatio < centerLeft) {
     return "left";
   }
 
-  if (positionRatio > 0.65) {
+  if (leftEdgeRatio > centerRight) {
     return "right";
   }
 

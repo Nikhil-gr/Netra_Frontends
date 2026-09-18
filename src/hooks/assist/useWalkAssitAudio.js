@@ -1,36 +1,83 @@
 import { useEffect, useRef, useState } from "react";
 
 import { useSpeechSynthesis } from "../speech/useSpeechSynthesis.js";
+
 import { useVibration } from "../device/useVibration.js";
 
 const REQUIRED_STREAK = 2;
-const ENVIRONMENT_COOLDOWN_MS = 10000;
-const GLOBAL_GAP_MS = 1600;
 
-const getDetectionKey = (detection) =>
+const ENVIRONMENT_COOLDOWN_MS = 7000;
+
+const GLOBAL_GAP_MS = 1300;
+
+const getStabilityKey = (detection) => detection.label;
+
+const getCooldownKey = (detection) =>
   `${detection.label}:${detection.position}`;
 
 const getAreaRatio = (detection) =>
   Number.isFinite(detection?.areaRatio) ? detection.areaRatio : 0;
 
+const getBottomRatio = (detection) =>
+  Number.isFinite(detection?.bottomRatio) ? detection.bottomRatio : 0;
+
+const getCenterOverlapRatio = (detection) =>
+  Number.isFinite(detection?.centerOverlapRatio)
+    ? detection.centerOverlapRatio
+    : detection?.position === "center"
+      ? 1
+      : 0;
+
+const getConfidence = (detection) =>
+  Number.isFinite(detection?.confidence) ? detection.confidence : 0;
+
 const getEnvironmentalPriority = (detection) => {
   const areaRatio = getAreaRatio(detection);
 
-  if (detection.position === "center") {
-    if (areaRatio >= 0.12) {
-      return 105;
+  const bottomRatio = getBottomRatio(detection);
+
+  const centerOverlapRatio = getCenterOverlapRatio(detection);
+
+  const confidence = getConfidence(detection);
+
+  const isForwardRelevant =
+    detection.position === "center" || centerOverlapRatio >= 0.2;
+
+  if (isForwardRelevant) {
+    if (areaRatio >= 0.06) {
+      return 112;
     }
 
-    if (areaRatio >= 0.05) {
-      return 92;
+    if (areaRatio >= 0.025) {
+      return 106;
+    }
+
+    if (bottomRatio >= 0.78 && areaRatio >= 0.01) {
+      return 102;
+    }
+
+    if (areaRatio >= 0.012) {
+      return 94;
+    }
+
+    if (bottomRatio >= 0.72 && areaRatio >= 0.006 && confidence >= 0.6) {
+      return 88;
     }
   }
 
   if (
     (detection.position === "left" || detection.position === "right") &&
-    areaRatio >= 0.14
+    bottomRatio >= 0.82 &&
+    areaRatio >= 0.025
   ) {
-    return 55;
+    return 66;
+  }
+
+  if (
+    (detection.position === "left" || detection.position === "right") &&
+    areaRatio >= 0.05
+  ) {
+    return 58;
   }
 
   return 0;
@@ -39,7 +86,7 @@ const getEnvironmentalPriority = (detection) => {
 const getPositionPhrase = (position) => {
   switch (position) {
     case "center":
-      return "ahead";
+      return "directly ahead";
 
     case "left":
       return "on your left";
@@ -56,14 +103,57 @@ const formatLabel = (label = "Object") =>
   label.charAt(0).toUpperCase() + label.slice(1);
 
 const buildEnvironmentalCue = (detection) => ({
-  id: `environment-${getDetectionKey(detection)}-${Date.now()}`,
+  id: `environment-${getCooldownKey(detection)}-${Date.now()}`,
+
   type: "environment",
+
   priority: getEnvironmentalPriority(detection),
+
   message: `${formatLabel(detection.label)} ${getPositionPhrase(
     detection.position,
   )}.`,
+
   detection,
 });
+
+const pickBestDetectionPerLabel = (detections) => {
+  const bestByLabel = new Map();
+
+  detections.forEach((detection) => {
+    const priority = getEnvironmentalPriority(detection);
+
+    if (priority <= 0) {
+      return;
+    }
+
+    const key = getStabilityKey(detection);
+
+    const existing = bestByLabel.get(key);
+
+    if (!existing) {
+      bestByLabel.set(key, detection);
+
+      return;
+    }
+
+    const existingPriority = getEnvironmentalPriority(existing);
+
+    if (priority > existingPriority) {
+      bestByLabel.set(key, detection);
+
+      return;
+    }
+
+    if (
+      priority === existingPriority &&
+      getAreaRatio(detection) > getAreaRatio(existing)
+    ) {
+      bestByLabel.set(key, detection);
+    }
+  });
+
+  return Array.from(bestByLabel.values());
+};
 
 export function useWalkAssistAudio({
   detections = [],
@@ -75,12 +165,17 @@ export function useWalkAssistAudio({
   onCue,
 }) {
   const { speak, stop, isSpeaking, isSupported } = useSpeechSynthesis();
+
   const { vibrate } = useVibration();
 
   const streaksRef = useRef(new Map());
+
   const lastEnvironmentSpokenRef = useRef(new Map());
+
   const pendingRouteCueRef = useRef(null);
+
   const lastHandledRouteCueRef = useRef(null);
+
   const lastSpeechTimeRef = useRef(0);
 
   const [lastCue, setLastCue] = useState(null);
@@ -96,21 +191,23 @@ export function useWalkAssistAudio({
   useEffect(() => {
     if (!enabled) {
       streaksRef.current.clear();
+
+      pendingRouteCueRef.current = null;
+
       return;
     }
 
     const now = Date.now();
+
+    const qualifyingDetections = pickBestDetectionPerLabel(detections);
+
     const previousStreaks = streaksRef.current;
+
     const nextStreaks = new Map();
 
-    detections.forEach((detection) => {
-      const priority = getEnvironmentalPriority(detection);
+    qualifyingDetections.forEach((detection) => {
+      const key = getStabilityKey(detection);
 
-      if (priority <= 0) {
-        return;
-      }
-
-      const key = getDetectionKey(detection);
       nextStreaks.set(key, (previousStreaks.get(key) ?? 0) + 1);
     });
 
@@ -120,17 +217,16 @@ export function useWalkAssistAudio({
       return;
     }
 
-    const environmentalCue = detections
+    const environmentalCue = qualifyingDetections
       .filter((detection) => {
-        const priority = getEnvironmentalPriority(detection);
+        const stabilityKey = getStabilityKey(detection);
 
-        if (priority <= 0) {
-          return false;
-        }
+        const cooldownKey = getCooldownKey(detection);
 
-        const key = getDetectionKey(detection);
-        const streak = nextStreaks.get(key) ?? 0;
-        const lastSpoken = lastEnvironmentSpokenRef.current.get(key) ?? 0;
+        const streak = nextStreaks.get(stabilityKey) ?? 0;
+
+        const lastSpoken =
+          lastEnvironmentSpokenRef.current.get(cooldownKey) ?? 0;
 
         return (
           streak >= REQUIRED_STREAK &&
@@ -151,7 +247,7 @@ export function useWalkAssistAudio({
           return areaDifference;
         }
 
-        return b.confidence - a.confidence;
+        return getConfidence(b) - getConfidence(a);
       })
       .map(buildEnvironmentalCue)[0];
 
@@ -175,6 +271,7 @@ export function useWalkAssistAudio({
 
     const didSpeak = speak(selectedCue.message, {
       language,
+
       rate: speechRate,
     });
 
@@ -183,18 +280,24 @@ export function useWalkAssistAudio({
     }
 
     lastSpeechTimeRef.current = now;
+
     setLastCue(selectedCue);
+
     onCue?.(selectedCue);
 
     if (selectedCue.type === "environment") {
-      const key = getDetectionKey(selectedCue.detection);
-      lastEnvironmentSpokenRef.current.set(key, now);
+      const cooldownKey = getCooldownKey(selectedCue.detection);
+
+      lastEnvironmentSpokenRef.current.set(cooldownKey, now);
 
       if (vibrationEnabled) {
-        vibrate([120, 70, 120]);
+        const isForward = selectedCue.detection.position === "center";
+
+        vibrate(isForward ? [140, 70, 140] : [90, 60, 90]);
       }
     } else {
       lastHandledRouteCueRef.current = selectedCue.id;
+
       pendingRouteCueRef.current = null;
 
       if (vibrationEnabled) {
@@ -227,15 +330,20 @@ export function useWalkAssistAudio({
   useEffect(() => {
     return () => {
       stop();
+
       streaksRef.current.clear();
+
       lastEnvironmentSpokenRef.current.clear();
+
       pendingRouteCueRef.current = null;
     };
   }, [stop]);
 
   return {
     lastCue,
+
     isSpeaking,
+
     speechSupported: isSupported,
   };
 }
