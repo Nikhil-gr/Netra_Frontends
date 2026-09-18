@@ -1,27 +1,15 @@
 export const createSessionSlice = (set) => ({
   findQuery: "",
-
   walkDestination: null,
-
   walkRoute: null,
-
   walkStepIndex: 0,
-
   walkAssistActive: false,
-
   walkAssistPaused: false,
-
   walkLastCue: "",
 
-  setFindQuery: (findQuery) =>
-    set({
-      findQuery,
-    }),
+  setFindQuery: (findQuery) => set({ findQuery }),
 
-  setWalkDestination: (walkDestination) =>
-    set({
-      walkDestination,
-    }),
+  setWalkDestination: (walkDestination) => set({ walkDestination }),
 
   setWalkRoute: (walkRoute) =>
     set({
@@ -29,38 +17,21 @@ export const createSessionSlice = (set) => ({
       walkStepIndex: 0,
     }),
 
-  setWalkStepIndex: (walkStepIndex) =>
-    set({
-      walkStepIndex,
-    }),
+  setWalkStepIndex: (walkStepIndex) => set({ walkStepIndex }),
 
-  setWalkAssistActive: (walkAssistActive) =>
-    set({
-      walkAssistActive,
-    }),
+  setWalkAssistActive: (walkAssistActive) => set({ walkAssistActive }),
 
-  setWalkAssistPaused: (walkAssistPaused) =>
-    set({
-      walkAssistPaused,
-    }),
+  setWalkAssistPaused: (walkAssistPaused) => set({ walkAssistPaused }),
 
-  setWalkLastCue: (walkLastCue) =>
-    set({
-      walkLastCue,
-    }),
+  setWalkLastCue: (walkLastCue) => set({ walkLastCue }),
 
   clearWalkAssist: () =>
     set({
       walkDestination: null,
-
       walkRoute: null,
-
       walkStepIndex: 0,
-
       walkAssistActive: false,
-
       walkAssistPaused: false,
-
       walkLastCue: "",
     }),
 });

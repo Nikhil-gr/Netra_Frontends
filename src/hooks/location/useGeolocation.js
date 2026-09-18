@@ -6,6 +6,17 @@ const DEFAULT_OPTIONS = {
   maximumAge: 3000,
 };
 
+const normalizePosition = (position) => ({
+  latitude: position.coords.latitude,
+  longitude: position.coords.longitude,
+  accuracy: position.coords.accuracy,
+  heading: Number.isFinite(position.coords.heading)
+    ? position.coords.heading
+    : null,
+  speed: Number.isFinite(position.coords.speed) ? position.coords.speed : null,
+  timestamp: position.timestamp,
+});
+
 const getErrorMessage = (error) => {
   switch (error?.code) {
     case 1:
@@ -22,17 +33,6 @@ const getErrorMessage = (error) => {
   }
 };
 
-const normalizePosition = (position) => ({
-  latitude: position.coords.latitude,
-  longitude: position.coords.longitude,
-  accuracy: position.coords.accuracy,
-  heading: Number.isFinite(position.coords.heading)
-    ? position.coords.heading
-    : null,
-  speed: Number.isFinite(position.coords.speed) ? position.coords.speed : null,
-  timestamp: position.timestamp,
-});
-
 export function useGeolocation({ enabled = false } = {}) {
   const [location, setLocation] = useState(null);
   const [error, setError] = useState(null);
@@ -44,15 +44,11 @@ export function useGeolocation({ enabled = false } = {}) {
     typeof navigator !== "undefined" && "geolocation" in navigator;
 
   const stopTracking = useCallback(() => {
-    if (!isSupported || watchIdRef.current === null) {
-      setIsTracking(false);
-      return;
+    if (isSupported && watchIdRef.current !== null) {
+      navigator.geolocation.clearWatch(watchIdRef.current);
     }
 
-    navigator.geolocation.clearWatch(watchIdRef.current);
-
     watchIdRef.current = null;
-
     setIsTracking(false);
   }, [isSupported]);
 
@@ -75,51 +71,43 @@ export function useGeolocation({ enabled = false } = {}) {
         setError(null);
         setIsTracking(true);
       },
-
       (positionError) => {
         setError(getErrorMessage(positionError));
       },
-
       DEFAULT_OPTIONS,
     );
 
     return true;
   }, [isSupported]);
 
-  const getCurrentPosition = useCallback(() => {
-    return new Promise((resolve, reject) => {
-      if (!isSupported) {
-        const message = "Location is not supported by this browser.";
-
-        setError(message);
-        reject(new Error(message));
-
-        return;
-      }
-
-      setError(null);
-
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          const nextLocation = normalizePosition(position);
-
-          setLocation(nextLocation);
-
-          resolve(nextLocation);
-        },
-
-        (positionError) => {
-          const message = getErrorMessage(positionError);
-
+  const getCurrentPosition = useCallback(
+    () =>
+      new Promise((resolve, reject) => {
+        if (!isSupported) {
+          const message = "Location is not supported by this browser.";
           setError(message);
-
           reject(new Error(message));
-        },
+          return;
+        }
 
-        DEFAULT_OPTIONS,
-      );
-    });
-  }, [isSupported]);
+        setError(null);
+
+        navigator.geolocation.getCurrentPosition(
+          (position) => {
+            const nextLocation = normalizePosition(position);
+            setLocation(nextLocation);
+            resolve(nextLocation);
+          },
+          (positionError) => {
+            const message = getErrorMessage(positionError);
+            setError(message);
+            reject(new Error(message));
+          },
+          DEFAULT_OPTIONS,
+        );
+      }),
+    [isSupported],
+  );
 
   useEffect(() => {
     if (enabled) {

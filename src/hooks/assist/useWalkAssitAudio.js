@@ -1,25 +1,17 @@
 import { useEffect, useRef, useState } from "react";
 
 import { useSpeechSynthesis } from "../speech/useSpeechSynthesis.js";
-
 import { useVibration } from "../device/useVibration.js";
 
 const REQUIRED_STREAK = 2;
-
 const ENVIRONMENT_COOLDOWN_MS = 10000;
-
 const GLOBAL_GAP_MS = 1600;
 
 const getDetectionKey = (detection) =>
   `${detection.label}:${detection.position}`;
 
-const getAreaRatio = (detection) => {
-  if (Number.isFinite(detection?.areaRatio)) {
-    return detection.areaRatio;
-  }
-
-  return 0;
-};
+const getAreaRatio = (detection) =>
+  Number.isFinite(detection?.areaRatio) ? detection.areaRatio : 0;
 
 const getEnvironmentalPriority = (detection) => {
   const areaRatio = getAreaRatio(detection);
@@ -32,8 +24,6 @@ const getEnvironmentalPriority = (detection) => {
     if (areaRatio >= 0.05) {
       return 92;
     }
-
-    return 0;
   }
 
   if (
@@ -67,15 +57,11 @@ const formatLabel = (label = "Object") =>
 
 const buildEnvironmentalCue = (detection) => ({
   id: `environment-${getDetectionKey(detection)}-${Date.now()}`,
-
   type: "environment",
-
   priority: getEnvironmentalPriority(detection),
-
   message: `${formatLabel(detection.label)} ${getPositionPhrase(
     detection.position,
   )}.`,
-
   detection,
 });
 
@@ -89,17 +75,12 @@ export function useWalkAssistAudio({
   onCue,
 }) {
   const { speak, stop, isSpeaking, isSupported } = useSpeechSynthesis();
-
   const { vibrate } = useVibration();
 
   const streaksRef = useRef(new Map());
-
   const lastEnvironmentSpokenRef = useRef(new Map());
-
   const pendingRouteCueRef = useRef(null);
-
   const lastHandledRouteCueRef = useRef(null);
-
   const lastSpeechTimeRef = useRef(0);
 
   const [lastCue, setLastCue] = useState(null);
@@ -115,16 +96,11 @@ export function useWalkAssistAudio({
   useEffect(() => {
     if (!enabled) {
       streaksRef.current.clear();
-
-      pendingRouteCueRef.current = null;
-
       return;
     }
 
     const now = Date.now();
-
     const previousStreaks = streaksRef.current;
-
     const nextStreaks = new Map();
 
     detections.forEach((detection) => {
@@ -135,7 +111,6 @@ export function useWalkAssistAudio({
       }
 
       const key = getDetectionKey(detection);
-
       nextStreaks.set(key, (previousStreaks.get(key) ?? 0) + 1);
     });
 
@@ -145,7 +120,7 @@ export function useWalkAssistAudio({
       return;
     }
 
-    const stableEnvironmentalDetections = detections
+    const environmentalCue = detections
       .filter((detection) => {
         const priority = getEnvironmentalPriority(detection);
 
@@ -154,9 +129,7 @@ export function useWalkAssistAudio({
         }
 
         const key = getDetectionKey(detection);
-
         const streak = nextStreaks.get(key) ?? 0;
-
         const lastSpoken = lastEnvironmentSpokenRef.current.get(key) ?? 0;
 
         return (
@@ -179,11 +152,8 @@ export function useWalkAssistAudio({
         }
 
         return b.confidence - a.confidence;
-      });
-
-    const environmentalCue = stableEnvironmentalDetections[0]
-      ? buildEnvironmentalCue(stableEnvironmentalDetections[0])
-      : null;
+      })
+      .map(buildEnvironmentalCue)[0];
 
     const pendingRouteCue = pendingRouteCueRef.current;
 
@@ -213,14 +183,11 @@ export function useWalkAssistAudio({
     }
 
     lastSpeechTimeRef.current = now;
-
     setLastCue(selectedCue);
-
     onCue?.(selectedCue);
 
     if (selectedCue.type === "environment") {
       const key = getDetectionKey(selectedCue.detection);
-
       lastEnvironmentSpokenRef.current.set(key, now);
 
       if (vibrationEnabled) {
@@ -228,15 +195,14 @@ export function useWalkAssistAudio({
       }
     } else {
       lastHandledRouteCueRef.current = selectedCue.id;
-
       pendingRouteCueRef.current = null;
 
       if (vibrationEnabled) {
-        if (selectedCue.type === "arrival") {
-          vibrate([150, 80, 150, 80, 250]);
-        } else {
-          vibrate([80, 60, 80]);
-        }
+        vibrate(
+          selectedCue.type === "arrival"
+            ? [150, 80, 150, 80, 250]
+            : [80, 60, 80],
+        );
       }
     }
 
@@ -261,11 +227,8 @@ export function useWalkAssistAudio({
   useEffect(() => {
     return () => {
       stop();
-
       streaksRef.current.clear();
-
       lastEnvironmentSpokenRef.current.clear();
-
       pendingRouteCueRef.current = null;
     };
   }, [stop]);

@@ -11,7 +11,6 @@ export function useVibration() {
       }
 
       navigator.vibrate(pattern);
-
       return true;
     },
     [isSupported],

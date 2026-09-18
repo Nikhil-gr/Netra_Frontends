@@ -2,12 +2,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { distanceBetweenMeters } from "../../utils/navigation/distance.js";
 
-const sanitizeInstruction = (instruction = "") => {
-  return instruction
+const sanitizeInstruction = (instruction = "") =>
+  instruction
     .replace(/<[^>]*>/g, " ")
     .replace(/\s+/g, " ")
     .trim();
-};
 
 const getFallbackInstruction = (maneuver) => {
   switch (maneuver) {
@@ -27,30 +26,23 @@ const getFallbackInstruction = (maneuver) => {
     case "arrive":
       return "Your destination is ahead.";
 
-    case "straight":
-      return "Continue along the route.";
-
     default:
       return "Continue along the route.";
   }
 };
 
-const getInstructionText = (step) => {
+export const getSafeRouteInstruction = (step) => {
   const instruction = sanitizeInstruction(step?.instruction || "");
-
-  if (!instruction) {
-    return getFallbackInstruction(step?.maneuver);
-  }
-
   const lower = instruction.toLowerCase();
 
-  if (
+  const unsafeClaim =
     lower.includes("safe to cross") ||
     lower.includes("cross now") ||
     lower.includes("road is clear") ||
     lower.includes("path is clear") ||
-    lower.includes("no cars")
-  ) {
+    lower.includes("no cars");
+
+  if (!instruction || unsafeClaim) {
     return getFallbackInstruction(step?.maneuver);
   }
 
@@ -67,11 +59,9 @@ export function useRouteGuidance({
   const [cue, setCue] = useState(null);
 
   const previewedRef = useRef(new Set());
-
   const reachedRef = useRef(new Set());
 
   const steps = Array.isArray(route?.steps) ? route.steps : [];
-
   const currentStep = steps[currentStepIndex] || null;
 
   const distanceToStep = useMemo(() => {
@@ -88,16 +78,13 @@ export function useRouteGuidance({
     }
 
     const stepId = currentStep.id || `step-${currentStepIndex}`;
-
     const accuracy = Number.isFinite(currentLocation.accuracy)
       ? currentLocation.accuracy
       : 10;
 
     const arrivalThreshold = Math.min(30, Math.max(12, accuracy * 1.25));
-
     const previewThreshold = Math.max(45, arrivalThreshold + 25);
-
-    const instruction = getInstructionText(currentStep);
+    const instruction = getSafeRouteInstruction(currentStep);
 
     if (
       distanceToStep <= previewThreshold &&

@@ -1,7 +1,7 @@
 import { apiClient } from "../client.js";
 
 export async function searchDestinations(query) {
-  const cleanedQuery = query.trim();
+  const cleanedQuery = query?.trim();
 
   if (!cleanedQuery) {
     return [];

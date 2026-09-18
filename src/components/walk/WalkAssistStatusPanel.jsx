@@ -23,7 +23,6 @@ const formatDistance = (meters) => {
 
 export default function WalkAssistStatusPanel({
   destination,
-  currentStep,
   currentDirection,
   distanceToStep,
   lastCue,
@@ -41,18 +40,11 @@ export default function WalkAssistStatusPanel({
   onEndWalk,
   endSelected,
 }) {
-  const nextInstruction =
-    currentDirection ||
-    (currentStep?.maneuver === "arrive"
-      ? "Destination ahead"
-      : "Continue along the route");
-
   return (
     <div className="space-y-4">
       <section className="rounded-2xl border border-slate-200 bg-white p-5">
         <div className="flex items-center gap-2">
           <MapPin size={20} className="text-emerald-700" />
-
           <h2 className="font-semibold text-slate-950">Destination</h2>
         </div>
 
@@ -64,12 +56,11 @@ export default function WalkAssistStatusPanel({
       <section className="rounded-2xl border border-slate-200 bg-white p-5">
         <div className="flex items-center gap-2">
           <Navigation size={20} className="text-emerald-700" />
-
           <h2 className="font-semibold text-slate-950">Next direction</h2>
         </div>
 
         <p className="mt-3 text-lg font-semibold leading-7 text-slate-950">
-          {nextInstruction}
+          {currentDirection || "Continue along the route."}
         </p>
 
         <p className="mt-2 text-sm text-slate-500">
@@ -80,7 +71,6 @@ export default function WalkAssistStatusPanel({
       <section className="rounded-2xl border border-slate-200 bg-white p-5">
         <div className="flex items-center gap-2">
           <LocateFixed size={20} className="text-emerald-700" />
-
           <h2 className="font-semibold text-slate-950">Live status</h2>
         </div>
 
@@ -121,7 +111,6 @@ export default function WalkAssistStatusPanel({
       >
         <div className="flex items-center gap-2">
           <Volume2 size={20} className="text-emerald-700" />
-
           <h2 className="font-semibold text-slate-950">Last cue</h2>
         </div>
 
@@ -154,7 +143,6 @@ export default function WalkAssistStatusPanel({
           }`}
         >
           {paused ? <Play size={19} /> : <Pause size={19} />}
-
           {paused ? "Resume" : "Pause"}
         </button>
       </div>

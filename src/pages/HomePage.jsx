@@ -3,13 +3,28 @@ import { Eye, FileText, ShieldAlert, History, Settings } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 import ModeCard from "../components/common/ModeCard.jsx";
-
 import { useSpokenAction } from "../hooks/accessibilty/useSpokenAction.js";
 
 export default function HomePage() {
   const navigate = useNavigate();
-
   const { trigger, isArmed } = useSpokenAction();
+
+  const openWalkAssist = async () => {
+    try {
+      if (navigator.mediaDevices?.getUserMedia) {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: true,
+        });
+
+        stream.getTracks().forEach((track) => track.stop());
+      }
+    } catch {
+      // Walk Assist still opens. The destination page will show text fallback
+      // if microphone permission is unavailable.
+    }
+
+    navigate("/walk-assist");
+  };
 
   return (
     <main className="mx-auto min-h-screen w-full max-w-6xl px-4 py-8 sm:px-6">
@@ -28,9 +43,7 @@ export default function HomePage() {
             onClick={() =>
               trigger({
                 id: "history",
-
                 announcement: "History clicked. Press again to open.",
-
                 action: () => navigate("/history"),
               })
             }
@@ -49,9 +62,7 @@ export default function HomePage() {
             onClick={() =>
               trigger({
                 id: "settings",
-
                 announcement: "Settings clicked. Press again to open.",
-
                 action: () => navigate("/settings"),
               })
             }
@@ -79,9 +90,7 @@ export default function HomePage() {
           onClick={() =>
             trigger({
               id: "describe",
-
               announcement: "Describe clicked. Press again to open.",
-
               action: () => navigate("/camera/describe"),
             })
           }
@@ -95,9 +104,7 @@ export default function HomePage() {
           onClick={() =>
             trigger({
               id: "read",
-
               announcement: "Read text clicked. Press again to open.",
-
               action: () => navigate("/camera/read"),
             })
           }
@@ -111,10 +118,8 @@ export default function HomePage() {
           onClick={() =>
             trigger({
               id: "assist",
-
               announcement: "Walk assist clicked. Press again to open.",
-
-              action: () => navigate("/walk-assist"),
+              action: openWalkAssist,
             })
           }
         />

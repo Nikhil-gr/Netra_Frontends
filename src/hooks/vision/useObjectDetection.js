@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 
 import { getCocoDetector } from "../../vision/cocoDetector.js";
-
 import { getObjectPosition } from "../../utils/vision/getObjectPosition.js";
 
 const DEFAULT_INTERVAL = 700;
@@ -13,11 +12,8 @@ export function useObjectDetection({
   interval = DEFAULT_INTERVAL,
 }) {
   const [detections, setDetections] = useState([]);
-
   const [isModelLoading, setIsModelLoading] = useState(false);
-
   const [isDetecting, setIsDetecting] = useState(false);
-
   const [detectionError, setDetectionError] = useState(null);
 
   const runningRef = useRef(false);
@@ -26,7 +22,6 @@ export function useObjectDetection({
     if (!enabled) {
       setDetections([]);
       setIsDetecting(false);
-
       return;
     }
 
@@ -61,7 +56,6 @@ export function useObjectDetection({
 
           if (cameraReady && !runningRef.current) {
             runningRef.current = true;
-
             setIsDetecting(true);
 
             try {
@@ -77,18 +71,13 @@ export function useObjectDetection({
                 .filter((prediction) => prediction.score >= minScore)
                 .map((prediction) => {
                   const [, , width, height] = prediction.bbox;
-
                   const boxArea = Math.max(0, width) * Math.max(0, height);
 
                   return {
                     label: prediction.class,
-
                     confidence: prediction.score,
-
                     bbox: prediction.bbox,
-
                     areaRatio: frameArea > 0 ? boxArea / frameArea : 0,
-
                     position: getObjectPosition(
                       prediction.bbox,
                       video.videoWidth,
@@ -125,7 +114,6 @@ export function useObjectDetection({
 
         if (!cancelled) {
           setIsModelLoading(false);
-
           setDetectionError("Unable to load local object detection.");
         }
       }
@@ -135,7 +123,6 @@ export function useObjectDetection({
 
     return () => {
       cancelled = true;
-
       runningRef.current = false;
 
       if (timerId) {

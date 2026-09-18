@@ -10,43 +10,12 @@ import NotFoundPage from "../pages/NotFoundPage.jsx";
 import WalkAssistPage from "../pages/WalkAssitPage.jsx";
 
 export const router = createBrowserRouter([
-  {
-    path: "/",
-    element: <HomePage />,
-  },
-
-  {
-    path: "/find",
-    element: <FindPage />,
-  },
-
-  {
-    path: "/walk-assist",
-    element: <WalkAssistPage />,
-  },
-
-  {
-    path: "/camera/:mode",
-    element: <CameraPage />,
-  },
-
-  {
-    path: "/result",
-    element: <ResultPage />,
-  },
-
-  {
-    path: "/history",
-    element: <HistoryPage />,
-  },
-
-  {
-    path: "/settings",
-    element: <SettingsPage />,
-  },
-
-  {
-    path: "*",
-    element: <NotFoundPage />,
-  },
+  { path: "/", element: <HomePage /> },
+  { path: "/find", element: <FindPage /> },
+  { path: "/walk-assist", element: <WalkAssistPage /> },
+  { path: "/camera/:mode", element: <CameraPage /> },
+  { path: "/result", element: <ResultPage /> },
+  { path: "/history", element: <HistoryPage /> },
+  { path: "/settings", element: <SettingsPage /> },
+  { path: "*", element: <NotFoundPage /> },
 ]);

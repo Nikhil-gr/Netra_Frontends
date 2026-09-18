@@ -4,18 +4,22 @@ const toRadians = (degrees) => (degrees * Math.PI) / 180;
 
 export function distanceBetweenMeters(pointA, pointB) {
   if (
-    !Number.isFinite(pointA?.latitude) ||
-    !Number.isFinite(pointA?.longitude) ||
-    !Number.isFinite(pointB?.latitude) ||
-    !Number.isFinite(pointB?.longitude)
+    !Number.isFinite(Number(pointA?.latitude)) ||
+    !Number.isFinite(Number(pointA?.longitude)) ||
+    !Number.isFinite(Number(pointB?.latitude)) ||
+    !Number.isFinite(Number(pointB?.longitude))
   ) {
     return Number.POSITIVE_INFINITY;
   }
 
-  const latitude1 = toRadians(pointA.latitude);
-  const latitude2 = toRadians(pointB.latitude);
-  const latitudeDelta = toRadians(pointB.latitude - pointA.latitude);
-  const longitudeDelta = toRadians(pointB.longitude - pointA.longitude);
+  const latitude1 = toRadians(Number(pointA.latitude));
+  const latitude2 = toRadians(Number(pointB.latitude));
+  const latitudeDelta = toRadians(
+    Number(pointB.latitude) - Number(pointA.latitude),
+  );
+  const longitudeDelta = toRadians(
+    Number(pointB.longitude) - Number(pointA.longitude),
+  );
 
   const haversine =
     Math.sin(latitudeDelta / 2) ** 2 +
@@ -27,4 +31,17 @@ export function distanceBetweenMeters(pointA, pointB) {
     2 * Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine));
 
   return EARTH_RADIUS_METERS * angularDistance;
+}
+
+export function sortDestinationsByDistance(items, currentLocation) {
+  if (!Array.isArray(items)) {
+    return [];
+  }
+
+  return items
+    .map((item) => ({
+      ...item,
+      distanceFromUserMeters: distanceBetweenMeters(currentLocation, item),
+    }))
+    .sort((a, b) => a.distanceFromUserMeters - b.distanceFromUserMeters);
 }

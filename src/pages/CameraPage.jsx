@@ -19,64 +19,46 @@ import ProcessingState from "../components/common/ProcessingState.jsx";
 import WalkAssistStatusPanel from "../components/walk/WalkAssistStatusPanel.jsx";
 
 import { useCamera } from "../hooks/camera/useCamera.js";
-
 import { useObjectDetection } from "../hooks/vision/useObjectDetection.js";
-
 import { useSpeechSynthesis } from "../hooks/speech/useSpeechSynthesis.js";
-
 import { useDetectionAnnouncements } from "../hooks/speech/useDetectionAnnouncement.js";
-
 import { useSpokenAction } from "../hooks/accessibilty/useSpokenAction.js";
-
 import { useGeolocation } from "../hooks/location/useGeolocation.js";
 
-
-
 import { useAnalyzeImage } from "../queries/analysis/useAnalyzeImage.js";
-
 import { useNetraStore } from "../store/useNetraStore.js";
 
 import { captureFrame } from "../utils/image/captureFrame.js";
-
 import { compressImage } from "../utils/image/compressImage.js";
-
 import { MODES } from "../utils/constants.js";
-import { useRouteGuidance } from "../utils/navigation/useRouteGuidance.js";
+import { getSafeRouteInstruction, useRouteGuidance } from "../utils/navigation/useRouteGuidance.js";
 import { useWalkAssistAudio } from "../hooks/assist/useWalkAssitAudio.js";
 
 const MODE_CONTENT = {
   describe: {
     title: "Describe surroundings",
-
     description: "Point the camera at the scene you want Netra to understand.",
-
     icon: Eye,
   },
 
   read: {
     title: "Read visible text",
-
     description:
       "Point the camera toward a sign, label, menu, document, or other text you want Netra to read.",
-
     icon: FileText,
   },
 
   find: {
     title: "Find an object",
-
     description:
       "Move the camera slowly while Netra searches for your selected object.",
-
     icon: Search,
   },
 
   assist: {
     title: "Walk Assist",
-
     description:
-      "Netra combines your walking route with live awareness from the camera.",
-
+      "Netra combines walking directions with live awareness from the camera.",
     icon: ShieldAlert,
   },
 };
@@ -114,9 +96,7 @@ const getAnalysisErrorMessage = (error, mode) => {
   }
 
   const backendError = error?.response?.data?.error;
-
   const code = backendError?.code;
-
   const message = backendError?.message;
 
   if (
@@ -146,105 +126,46 @@ const getAnalysisErrorMessage = (error, mode) => {
   );
 };
 
-const getDirectionText = (step) => {
-  const instruction = step?.instruction?.trim() || "";
-
-  const lowerInstruction = instruction.toLowerCase();
-
-  const containsUnsafeClaim =
-    lowerInstruction.includes("safe to cross") ||
-    lowerInstruction.includes("cross now") ||
-    lowerInstruction.includes("road is clear") ||
-    lowerInstruction.includes("path is clear") ||
-    lowerInstruction.includes("no cars");
-
-  if (instruction && !containsUnsafeClaim) {
-    return instruction;
-  }
-
-  switch (step?.maneuver) {
-    case "left":
-    case "sharp_left":
-    case "slight_left":
-      return "Your route turns left ahead.";
-
-    case "right":
-    case "sharp_right":
-    case "slight_right":
-      return "Your route turns right ahead.";
-
-    case "u_turn":
-      return "Your route makes a U-turn ahead.";
-
-    case "arrive":
-      return "Your destination is ahead.";
-
-    default:
-      return "Continue along the route.";
-  }
-};
-
 export default function CameraPage() {
   const { mode } = useParams();
-
   const navigate = useNavigate();
 
   const videoRef = useRef(null);
-
   const entryTimerRef = useRef(null);
-
   const lastAnnouncedModeRef = useRef(null);
-
   const analysisLockRef = useRef(false);
 
   const [liveAnnouncementsReady, setLiveAnnouncementsReady] = useState(false);
-
   const [analysisError, setAnalysisError] = useState(null);
 
   const findQuery = useNetraStore((state) => state.findQuery);
-
   const autoSpeak = useNetraStore((state) => state.autoSpeak);
-
   const speechRate = useNetraStore((state) => state.speechRate);
-
   const vibrationEnabled = useNetraStore((state) => state.vibrationEnabled);
-
   const setCurrentResult = useNetraStore((state) => state.setCurrentResult);
 
   const walkDestination = useNetraStore((state) => state.walkDestination);
-
   const walkRoute = useNetraStore((state) => state.walkRoute);
-
   const walkStepIndex = useNetraStore((state) => state.walkStepIndex);
-
   const walkAssistActive = useNetraStore((state) => state.walkAssistActive);
-
   const walkAssistPaused = useNetraStore((state) => state.walkAssistPaused);
-
   const walkLastCue = useNetraStore((state) => state.walkLastCue);
 
   const setWalkStepIndex = useNetraStore((state) => state.setWalkStepIndex);
-
   const setWalkAssistPaused = useNetraStore(
     (state) => state.setWalkAssistPaused,
   );
-
   const setWalkLastCue = useNetraStore((state) => state.setWalkLastCue);
-
   const clearWalkAssist = useNetraStore((state) => state.clearWalkAssist);
 
   const speechLanguage = "en-US";
 
   const { speak, isSpeaking: isEntrySpeaking } = useSpeechSynthesis();
-
   const { trigger, isArmed } = useSpokenAction();
-
   const { stream, error, isStarting, startCamera, stopCamera } = useCamera();
-
   const analyzeMutation = useAnalyzeImage();
 
   const isValidMode = MODES.includes(mode);
-
   const missingFindQuery = mode === "find" && !findQuery.trim();
 
   const missingWalkRoute =
@@ -260,11 +181,8 @@ export default function CameraPage() {
   const { detections, isModelLoading, isDetecting, detectionError } =
     useObjectDetection({
       videoRef,
-
       enabled: localDetectionEnabled,
-
       minScore: mode === "find" ? 0.5 : 0.6,
-
       interval: 700,
     });
 
@@ -272,7 +190,6 @@ export default function CameraPage() {
     mode === "find"
       ? detections.filter((detection) => {
           const label = detection.label.trim().toLowerCase();
-
           const query = findQuery.trim().toLowerCase();
 
           return (
@@ -295,13 +212,9 @@ export default function CameraPage() {
     distanceToStep,
   } = useRouteGuidance({
     route: walkRoute,
-
     currentLocation: location,
-
     currentStepIndex: walkStepIndex,
-
     setCurrentStepIndex: setWalkStepIndex,
-
     enabled:
       mode === "assist" &&
       !missingWalkRoute &&
@@ -322,15 +235,10 @@ export default function CameraPage() {
 
   const { isSpeaking: isDetectionSpeaking } = useDetectionAnnouncements({
     detections: visibleDetections,
-
     mode,
-
     findQuery,
-
     enabled: findSpeechEnabled,
-
     speechRate,
-
     language: speechLanguage,
   });
 
@@ -356,17 +264,11 @@ export default function CameraPage() {
 
   const { isSpeaking: isWalkSpeaking } = useWalkAssistAudio({
     detections: mode === "assist" ? detections : [],
-
     routeCue: mode === "assist" ? routeCue : null,
-
     enabled: walkAudioEnabled,
-
     speechRate,
-
     language: speechLanguage,
-
     vibrationEnabled,
-
     onCue: handleWalkCue,
   });
 
@@ -411,17 +313,13 @@ export default function CameraPage() {
 
       if (!message) {
         setLiveAnnouncementsReady(true);
-
         return;
       }
 
       const spoken = speak(message, {
         language: speechLanguage,
-
         rate: speechRate,
-
         onEnd: () => setLiveAnnouncementsReady(true),
-
         onError: () => setLiveAnnouncementsReady(true),
       });
 
@@ -453,43 +351,33 @@ export default function CameraPage() {
     }
 
     analysisLockRef.current = true;
-
     setAnalysisError(null);
 
     try {
       const capturedImage = await captureFrame(videoRef.current);
-
       const compressedImage = await compressImage(capturedImage, {
         maxDimension: 1024,
-
         quality: 0.72,
       });
 
       const analysis = await analyzeMutation.mutateAsync({
         image: compressedImage,
-
         mode: analysisMode,
-
         language: "en",
-
         saveHistory: false,
       });
 
       setCurrentResult(analysis);
-
       stopCamera();
-
       navigate("/result");
     } catch (analysisException) {
       console.error(`${analysisMode} analysis failed:`, analysisException);
 
       const message = getAnalysisErrorMessage(analysisException, analysisMode);
-
       setAnalysisError(message);
 
       speak(message, {
         language: speechLanguage,
-
         rate: speechRate,
       });
     } finally {
@@ -498,17 +386,13 @@ export default function CameraPage() {
   };
 
   const handleDescribe = () => handleImageAnalysis("describe");
-
   const handleRead = () => handleImageAnalysis("read");
 
   const handleBack = () => {
     if (mode === "assist") {
-      clearWalkAssist();
-
       stopCamera();
-
+      clearWalkAssist();
       navigate("/walk-assist");
-
       return;
     }
 
@@ -517,37 +401,30 @@ export default function CameraPage() {
 
   const handlePauseToggle = () => {
     const nextPaused = !walkAssistPaused;
-
     setWalkAssistPaused(nextPaused);
 
     const message = nextPaused ? "Walk Assist paused." : "Walk Assist resumed.";
 
     setWalkLastCue(message);
-
     speak(message, {
       language: speechLanguage,
-
       rate: speechRate,
     });
   };
 
   const handleRepeatDirection = () => {
-    const message = getDirectionText(currentStep);
-
+    const message = getSafeRouteInstruction(currentStep);
     setWalkLastCue(message);
 
     speak(message, {
       language: speechLanguage,
-
       rate: speechRate,
     });
   };
 
   const handleEndWalk = () => {
     stopCamera();
-
     clearWalkAssist();
-
     navigate("/");
   };
 
@@ -563,10 +440,8 @@ export default function CameraPage() {
           onClick={() =>
             trigger({
               id: "invalid-home",
-
               announcement:
                 "Return home button clicked. Press again to return home.",
-
               action: () => navigate("/"),
             })
           }
@@ -598,10 +473,8 @@ export default function CameraPage() {
           onClick={() =>
             trigger({
               id: "choose-object",
-
               announcement:
                 "Choose object button clicked. Press again to choose an object.",
-
               action: () => navigate("/find"),
             })
           }
@@ -633,10 +506,8 @@ export default function CameraPage() {
           onClick={() =>
             trigger({
               id: "choose-destination",
-
               announcement:
                 "Choose destination button clicked. Press again to choose a destination.",
-
               action: () => navigate("/walk-assist"),
             })
           }
@@ -653,9 +524,7 @@ export default function CameraPage() {
   }
 
   const content = MODE_CONTENT[mode];
-
   const ModeIcon = content.icon;
-
   const isSpeaking = isEntrySpeaking || isDetectionSpeaking || isWalkSpeaking;
 
   return (
@@ -666,12 +535,10 @@ export default function CameraPage() {
           onClick={() =>
             trigger({
               id: "camera-back",
-
               announcement:
                 mode === "assist"
                   ? "Back button clicked. Press again to end this walk and return to destination setup."
                   : "Back button clicked. Press again to return home.",
-
               action: handleBack,
             })
           }
@@ -687,7 +554,6 @@ export default function CameraPage() {
 
         <div className="flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-700">
           <ModeIcon size={15} />
-
           {content.title}
         </div>
       </header>
@@ -734,10 +600,8 @@ export default function CameraPage() {
                   onClick={() =>
                     trigger({
                       id: "describe-scene",
-
                       announcement:
                         "Describe scene button clicked. Press again to analyze the scene.",
-
                       action: handleDescribe,
                     })
                   }
@@ -774,10 +638,8 @@ export default function CameraPage() {
                   onClick={() =>
                     trigger({
                       id: "read-text",
-
                       announcement:
                         "Read text button clicked. Press again to capture and read the visible text.",
-
                       action: handleRead,
                     })
                   }
@@ -893,8 +755,7 @@ export default function CameraPage() {
         {mode === "assist" && (
           <WalkAssistStatusPanel
             destination={walkDestination}
-            currentStep={currentStep}
-            currentDirection={getDirectionText(currentStep)}
+            currentDirection={getSafeRouteInstruction(currentStep)}
             distanceToStep={distanceToStep}
             lastCue={walkLastCue}
             location={location}
@@ -907,10 +768,8 @@ export default function CameraPage() {
             onRepeatDirection={() =>
               trigger({
                 id: "repeat-direction",
-
                 announcement:
                   "Repeat direction button clicked. Press again to hear the current route direction.",
-
                 action: handleRepeatDirection,
               })
             }
@@ -918,11 +777,9 @@ export default function CameraPage() {
             onPauseToggle={() =>
               trigger({
                 id: "pause-walk-assist",
-
                 announcement: walkAssistPaused
                   ? "Resume Walk Assist button clicked. Press again to resume."
                   : "Pause Walk Assist button clicked. Press again to pause.",
-
                 action: handlePauseToggle,
               })
             }
@@ -930,10 +787,8 @@ export default function CameraPage() {
             onEndWalk={() =>
               trigger({
                 id: "end-walk-assist",
-
                 announcement:
                   "End Walk Assist button clicked. Press again to end navigation and return home.",
-
                 action: handleEndWalk,
               })
             }
