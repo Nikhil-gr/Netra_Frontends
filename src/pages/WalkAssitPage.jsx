@@ -18,64 +18,12 @@ import {
 } from "../api/navigation/navigationApi.js";
 
 import { useGeolocation } from "../hooks/location/useGeolocation.js";
-import { useSpeechRecognition } from "../hooks/speech/useSpeechRecognition.js";
-import { useSpeechSynthesis } from "../hooks/speech/useSpeechSynthesis.js";
 import { useSpokenAction } from "../hooks/accessibilty/useSpokenAction.js";
 import { useNetraStore } from "../store/useNetraStore.js";
+import { useNetraVoice } from "../voice/useNetraVoice.js";
+import { parseVoiceIntent } from "../voice/voiceIntents.js";
 
 import { sortDestinationsByDistance } from "../utils/navigation/distance.js";
-
-const YES_PHRASES = [
-  "yes",
-  "yeah",
-  "yep",
-  "correct",
-  "sure",
-  "okay",
-  "ok",
-  "that is right",
-  "that's right",
-  "go there",
-];
-
-const NO_PHRASES = [
-  "no",
-  "nope",
-  "not that one",
-  "next",
-  "another",
-  "another one",
-];
-
-const normalizeSpeech = (value = "") =>
-  value
-    .toLowerCase()
-    .replace(/[^a-z0-9\s']/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-
-const includesPhrase = (answer, phrases) =>
-  phrases.some(
-    (phrase) =>
-      answer === phrase ||
-      answer.startsWith(`${phrase} `) ||
-      answer.endsWith(` ${phrase}`) ||
-      answer.includes(` ${phrase} `),
-  );
-
-const getConfirmationIntent = (value) => {
-  const answer = normalizeSpeech(value);
-
-  if (includesPhrase(answer, YES_PHRASES)) {
-    return "yes";
-  }
-
-  if (includesPhrase(answer, NO_PHRASES)) {
-    return "no";
-  }
-
-  return "unknown";
-};
 
 const getApiErrorMessage = (error, fallback) => {
   const backendError = error?.response?.data?.error;
@@ -114,6 +62,7 @@ export default function WalkAssistPage() {
   const autoStartTimerRef = useRef(null);
 
   const speechRate = useNetraStore((state) => state.speechRate);
+  const autoSpeak = useNetraStore((state) => state.autoSpeak);
   const walkInitialLocation = useNetraStore(
     (state) => state.walkInitialLocation,
   );
@@ -129,7 +78,6 @@ export default function WalkAssistPage() {
   const resetWalkRoute = useNetraStore((state) => state.resetWalkRoute);
   const clearWalkAssist = useNetraStore((state) => state.clearWalkAssist);
 
-  const { speak, speakAndWait, stop: stopSpeech } = useSpeechSynthesis();
   const { trigger, isArmed } = useSpokenAction();
 
   const {
@@ -139,15 +87,16 @@ export default function WalkAssistPage() {
   } = useGeolocation();
 
   const {
+    speak,
+    speakAndWait,
+    stopSpeech,
+    ask: askVoice,
     isListening,
     error: recognitionError,
     isSupported: recognitionSupported,
     unsupportedReason,
-    listenOnce,
     abortListening,
-  } = useSpeechRecognition({
-    language: "en-US",
-  });
+  } = useNetraVoice();
 
   const cancelConversation = useCallback(() => {
     conversationVersionRef.current += 1;
@@ -274,40 +223,34 @@ export default function WalkAssistPage() {
       setSuggestedIndex(index);
       setStatus(`Suggested: ${getDestinationName(destination)}`);
 
-      await speakAndWait(
-        `The closest result by location I found is ${getDestinationName(
-          destination,
-        )}. Is that where you want to go?`,
-        {
-          language: "en-US",
-          rate: speechRate,
-        },
-      );
-
-      if (conversationVersionRef.current !== version) {
-        return "cancelled";
-      }
-
       for (let attempt = 0; attempt < 2; attempt += 1) {
         setStatus("Listening for yes or no...");
 
         try {
-          const answer = await listenOnce();
+          const answer = await askVoice(
+            attempt === 0
+              ? `The closest result by location I found is ${getDestinationName(destination)}. Is that where you want to go?`
+              : "Please say yes or no.",
+          );
+
+          if (!answer) return "cancelled";
 
           if (conversationVersionRef.current !== version) {
             return "cancelled";
           }
 
-          const intent = getConfirmationIntent(answer);
+          const intent = parseVoiceIntent(answer, { expectsConfirmation: true }).type;
+
+          if (intent === "home") {
+            clearWalkAssist();
+            navigate("/");
+            return "cancelled";
+          }
 
           if (intent === "yes" || intent === "no") {
             return intent;
           }
 
-          await speakAndWait("Please say yes or no.", {
-            language: "en-US",
-            rate: speechRate,
-          });
         } catch {
           if (attempt === 0) {
             await speakAndWait("I did not catch that. Please say yes or no.", {
@@ -320,7 +263,7 @@ export default function WalkAssistPage() {
 
       return "unknown";
     },
-    [listenOnce, speakAndWait, speechRate],
+    [askVoice, clearWalkAssist, navigate, speakAndWait, speechRate],
   );
 
   const runVoiceConversation = useCallback(async () => {
@@ -332,10 +275,10 @@ export default function WalkAssistPage() {
     setSuggestedIndex(-1);
     setResults([]);
 
-    if (!recognitionSupported) {
+    if (!autoSpeak || !recognitionSupported) {
       setVoiceFallback(true);
       const message =
-        unsupportedReason ||
+        (!autoSpeak && "Voice Guide is off in Settings. Type a destination below.") || unsupportedReason ||
         "Automatic voice input is unavailable. Type a destination below.";
 
       setStatus(message);
@@ -407,21 +350,20 @@ export default function WalkAssistPage() {
     let noSpeechCount = 0;
 
     while (conversationVersionRef.current === version) {
-      await speakAndWait("Where would you like to go?", {
-        language: "en-US",
-        rate: speechRate,
-      });
-
-      if (conversationVersionRef.current !== version) {
-        return;
-      }
-
       setStatus("Listening for your destination...");
 
       let spokenDestination = "";
 
       try {
-        spokenDestination = (await listenOnce()).trim();
+        const answer = await askVoice("Where would you like to go?");
+        if (!answer) return;
+        const command = parseVoiceIntent(answer);
+        if (command.type === "home") {
+          clearWalkAssist();
+          navigate("/");
+          return;
+        }
+        spokenDestination = answer.trim();
         noSpeechCount = 0;
       } catch (error) {
         noSpeechCount += 1;
@@ -505,7 +447,7 @@ export default function WalkAssistPage() {
       }
 
       let confirmed = false;
-      const maxSuggestions = Math.min(destinations.length, 5);
+      const maxSuggestions = destinations.length;
 
       for (let index = 0; index < maxSuggestions; index += 1) {
         if (conversationVersionRef.current !== version) {
@@ -557,10 +499,13 @@ export default function WalkAssistPage() {
     }
   }, [
     askForConfirmation,
+    askVoice,
+    autoSpeak,
+    clearWalkAssist,
     getCurrentPosition,
-    listenOnce,
     locationSecure,
     locationSupported,
+    navigate,
     recognitionSupported,
     saveAndStartRoute,
     unsupportedReason,

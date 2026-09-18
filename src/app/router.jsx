@@ -1,4 +1,5 @@
-import { createBrowserRouter } from "react-router-dom";
+import { createBrowserRouter, Outlet } from "react-router-dom";
+import NetraVoiceProvider from "../voice/NetraVoiceProvider.jsx";
 
 import HomePage from "../pages/HomePage.jsx";
 import FindPage from "../pages/FindPage.jsx";
@@ -9,7 +10,11 @@ import SettingsPage from "../pages/SettingsPage.jsx";
 import NotFoundPage from "../pages/NotFoundPage.jsx";
 import WalkAssistPage from "../pages/WalkAssitPage.jsx";
 
-export const router = createBrowserRouter([
+function RootLayout() {
+  return <NetraVoiceProvider><Outlet /></NetraVoiceProvider>;
+}
+
+export const router = createBrowserRouter([{ element: <RootLayout />, children: [
   { path: "/", element: <HomePage /> },
   { path: "/find", element: <FindPage /> },
   { path: "/walk-assist", element: <WalkAssistPage /> },
@@ -18,4 +23,4 @@ export const router = createBrowserRouter([
   { path: "/history", element: <HistoryPage /> },
   { path: "/settings", element: <SettingsPage /> },
   { path: "*", element: <NotFoundPage /> },
-]);
+]}]);

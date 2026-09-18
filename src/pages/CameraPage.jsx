@@ -35,6 +35,8 @@ import { useWalkAssistAudio } from "../hooks/assist/useWalkAssitAudio.js";
 import { useAnalyzeImage } from "../queries/analysis/useAnalyzeImage.js";
 
 import { useNetraStore } from "../store/useNetraStore.js";
+import { useNetraVoice } from "../voice/useNetraVoice.js";
+import { parseVoiceIntent } from "../voice/voiceIntents.js";
 
 import { captureFrame } from "../utils/image/captureFrame.js";
 
@@ -87,10 +89,10 @@ const MODE_CONTENT = {
 const getEntryAnnouncement = ({ mode, findQuery, walkDestination }) => {
   switch (mode) {
     case "describe":
-      return "Describe mode. Point your camera at your surroundings. Press describe scene when ready.";
+      return "";
 
     case "read":
-      return "Read text mode. Point your camera at the text you want to read. Press read text when ready.";
+      return "";
 
     case "find":
       return `Looking for ${findQuery}. Move the camera slowly around your surroundings.`;
@@ -165,6 +167,14 @@ export default function CameraPage() {
   const [liveAnnouncementsReady, setLiveAnnouncementsReady] = useState(false);
 
   const [analysisError, setAnalysisError] = useState(null);
+  const [cameraReady, setCameraReady] = useState(false);
+  const [walkGuidanceMuted, setWalkGuidanceMuted] = useState(false);
+  const {
+    registerActions,
+    listenWithTimeout,
+    abortListening,
+    speakAndWait: voiceSpeakAndWait,
+  } = useNetraVoice();
 
   const findQuery = useNetraStore((state) => state.findQuery);
 
@@ -324,6 +334,7 @@ export default function CameraPage() {
     !missingWalkRoute &&
     liveAnnouncementsReady &&
     !walkAssistPaused &&
+    !walkGuidanceMuted &&
     !isEntrySpeaking,
   );
 
@@ -525,6 +536,90 @@ export default function CameraPage() {
 
     navigate("/");
   };
+
+  useEffect(() => {
+    setCameraReady(false);
+    const video = videoRef.current;
+    if (!stream || !video) return undefined;
+    const markReady = () => {
+      if (video.readyState >= 2 && video.videoWidth > 0 && video.videoHeight > 0) {
+        setCameraReady(true);
+      }
+    };
+    markReady();
+    video.addEventListener("loadeddata", markReady);
+    video.addEventListener("canplay", markReady);
+    return () => {
+      video.removeEventListener("loadeddata", markReady);
+      video.removeEventListener("canplay", markReady);
+    };
+  }, [stream]);
+
+  useEffect(
+    () =>
+      registerActions({
+        cameraReady,
+        cameraError: error,
+        pending: analyzeMutation.isPending || analysisLockRef.current,
+        analyze: mode === "read" ? handleRead : handleDescribe,
+        home: () => {
+          stopCamera();
+          navigate("/");
+        },
+      }),
+    [cameraReady, error, analyzeMutation.isPending, mode, navigate, registerActions, stopCamera],
+  );
+
+  useEffect(() => {
+    if (mode !== "assist" || missingWalkRoute || isEntrySpeaking || isWalkSpeaking) {
+      abortListening();
+      return undefined;
+    }
+    let cancelled = false;
+    const listenForWalkCommands = async () => {
+      while (!cancelled) {
+        try {
+          const heard = await listenWithTimeout(30000);
+          if (cancelled) return;
+          const intent = parseVoiceIntent(heard, { expectsConfirmation: false });
+          if (intent.type === "pause" && !walkAssistPaused) handlePauseToggle();
+          else if (intent.type === "resume" && walkAssistPaused) handlePauseToggle();
+          else if (intent.type === "resume" && !walkAssistPaused && !walkGuidanceMuted) handleRepeatDirection();
+          else if (intent.type === "repeat" || intent.type === "repeat_direction") handleRepeatDirection();
+          else if (intent.type === "mute_guidance") {
+            setWalkGuidanceMuted(true);
+            await voiceSpeakAndWait("Walk Assist guidance muted. Say Unmute Guidance to restore automatic speech.");
+          } else if (intent.type === "unmute_guidance") {
+            setWalkGuidanceMuted(false);
+            await voiceSpeakAndWait("Walk Assist guidance unmuted.");
+          }
+          else if (intent.type === "destination") {
+            const name = walkDestination?.name || walkDestination?.label || "your selected destination";
+            await voiceSpeakAndWait(`You are going to ${name}.`);
+          } else if (intent.type === "help") {
+            await voiceSpeakAndWait("You can say Pause, Resume, Repeat Direction, or End Walk.");
+          } else if (intent.type === "end_walk") {
+            await voiceSpeakAndWait("Do you want to end Walk Assist and return Home?");
+            try {
+              const answer = parseVoiceIntent(await listenWithTimeout(9000), { expectsConfirmation: true });
+              if (answer.type === "yes") {
+                handleEndWalk();
+                return;
+              }
+              await voiceSpeakAndWait("Okay. Continuing Walk Assist.");
+            } catch {}
+          }
+        } catch {
+          // Silence is normal during active walking; re-arm without prompting.
+        }
+      }
+    };
+    listenForWalkCommands();
+    return () => {
+      cancelled = true;
+      abortListening();
+    };
+  }, [abortListening, isEntrySpeaking, isWalkSpeaking, listenWithTimeout, missingWalkRoute, mode, speechRate, voiceSpeakAndWait, walkAssistPaused, walkDestination, walkGuidanceMuted]);
 
   if (!isValidMode) {
     return (

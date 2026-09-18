@@ -1,7 +1,9 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 export function useSpeechSynthesis() {
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const utteranceIdRef = useRef(0);
+  const pendingResolveRef = useRef(null);
 
   const isSupported =
     typeof window !== "undefined" &&
@@ -11,8 +13,12 @@ export function useSpeechSynthesis() {
   const stop = useCallback(() => {
     if (!isSupported) return;
 
+    utteranceIdRef.current += 1;
     window.speechSynthesis.cancel();
+    pendingResolveRef.current?.(false);
+    pendingResolveRef.current = null;
     setIsSpeaking(false);
+    window.dispatchEvent(new CustomEvent("netra-speech-end"));
   }, [isSupported]);
 
   const speak = useCallback(
@@ -25,6 +31,7 @@ export function useSpeechSynthesis() {
         volume = 1,
         onEnd,
         onError,
+        preservePending = false,
       } = {},
     ) => {
       if (!isSupported || !text?.trim()) {
@@ -35,6 +42,13 @@ export function useSpeechSynthesis() {
 
       const synthesis = window.speechSynthesis;
 
+      if (!preservePending) {
+        pendingResolveRef.current?.(false);
+        pendingResolveRef.current = null;
+      }
+
+      const utteranceId = utteranceIdRef.current + 1;
+      utteranceIdRef.current = utteranceId;
       synthesis.cancel();
 
       const utterance = new SpeechSynthesisUtterance(text.trim());
@@ -47,17 +61,23 @@ export function useSpeechSynthesis() {
       utterance.volume = volume;
 
       utterance.onstart = () => {
+        if (utteranceIdRef.current !== utteranceId) return;
         setIsSpeaking(true);
+        window.dispatchEvent(new CustomEvent("netra-speech-start"));
       };
 
       utterance.onend = () => {
+        if (utteranceIdRef.current !== utteranceId) return;
         setIsSpeaking(false);
+        window.dispatchEvent(new CustomEvent("netra-speech-end"));
 
         onEnd?.();
       };
 
       utterance.onerror = (event) => {
+        if (utteranceIdRef.current !== utteranceId) return;
         setIsSpeaking(false);
+        window.dispatchEvent(new CustomEvent("netra-speech-end"));
 
         onError?.(event);
       };
@@ -78,14 +98,20 @@ export function useSpeechSynthesis() {
           return;
         }
 
+        pendingResolveRef.current?.(false);
+        pendingResolveRef.current = resolve;
+
         speak(text, {
           ...options,
+          preservePending: true,
 
           onEnd: () => {
+            pendingResolveRef.current = null;
             resolve(true);
           },
 
           onError: () => {
+            pendingResolveRef.current = null;
             resolve(false);
           },
         });
@@ -95,12 +121,15 @@ export function useSpeechSynthesis() {
   );
 
   useEffect(() => {
+    const handleGlobalStop = () => stop();
+    window.addEventListener("netra-stop-speech", handleGlobalStop);
     return () => {
+      window.removeEventListener("netra-stop-speech", handleGlobalStop);
       if (isSupported) {
-        window.speechSynthesis.cancel();
+        stop();
       }
     };
-  }, [isSupported]);
+  }, [isSupported, stop]);
 
   return {
     speak,

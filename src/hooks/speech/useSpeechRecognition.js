@@ -213,6 +213,29 @@ export function useSpeechRecognition({ language = "en-US" } = {}) {
     setIsListening(false);
   }, []);
 
+  const listenWithTimeout = useCallback(
+    (timeoutMs = 9000) =>
+      new Promise((resolve, reject) => {
+        let settled = false;
+        const settle = (callback, value) => {
+          if (settled) return;
+          settled = true;
+          window.clearTimeout(timer);
+          callback(value);
+        };
+        const timer = window.setTimeout(() => {
+          abortListening();
+          settle(reject, new Error("I did not hear anything."));
+        }, timeoutMs);
+
+        listenOnce().then(
+          (value) => settle(resolve, value),
+          (listenError) => settle(reject, listenError),
+        );
+      }),
+    [abortListening, listenOnce],
+  );
+
   return {
     transcript,
     isListening,
@@ -220,6 +243,7 @@ export function useSpeechRecognition({ language = "en-US" } = {}) {
     isSupported,
     unsupportedReason,
     listenOnce,
+    listenWithTimeout,
     startListening,
     stopListening,
     abortListening,
