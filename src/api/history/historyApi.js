@@ -1,6 +1,7 @@
-import { apiClient } from '../client.js'
+import { apiClient } from "../client.js";
 
 export async function getHistory(params) {
-  const { data } = await apiClient.get('/history', { params })
-  return data
+  const { data } = await apiClient.get("/history", { params });
+
+  return data.data;
 }

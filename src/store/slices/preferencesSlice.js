@@ -1,5 +1,5 @@
 export const createPreferencesSlice = (set) => ({
-  language: 'en',
+  language: "en",
   speechRate: 1,
   autoSpeak: true,
   vibrationEnabled: true,
@@ -7,4 +7,4 @@ export const createPreferencesSlice = (set) => ({
   setSpeechRate: (speechRate) => set({ speechRate }),
   setAutoSpeak: (autoSpeak) => set({ autoSpeak }),
   setVibrationEnabled: (vibrationEnabled) => set({ vibrationEnabled }),
-})
+});

@@ -1,1 +1,1 @@
-export const selectCurrentResult = (state) => state.currentResult
+export const selectCurrentResult = (state) => state.currentResult;

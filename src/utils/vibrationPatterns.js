@@ -1,1 +1,1 @@
-export const vibrationPatterns = {}
+export const vibrationPatterns = {};

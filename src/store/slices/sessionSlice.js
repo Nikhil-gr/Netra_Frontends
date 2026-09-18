@@ -1,4 +1,4 @@
 export const createSessionSlice = (set) => ({
-  findQuery: '',
+  findQuery: "",
   setFindQuery: (findQuery) => set({ findQuery }),
-})
+});

@@ -1,1 +1,1 @@
-export const selectFindQuery = (state) => state.findQuery
+export const selectFindQuery = (state) => state.findQuery;

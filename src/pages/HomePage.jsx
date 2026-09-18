@@ -1,75 +1,147 @@
-import { Eye, FileText, Search, TriangleAlert } from "lucide-react";
-import { Link } from "react-router-dom";
-import ModeCard from "../components/common/ModeCard.jsx";
-import { useHealth } from "../queries/health/useHealth.js";
+import {
+  Eye,
+  FileText,
+  Search,
+  ShieldAlert,
+  History,
+  Settings,
+} from "lucide-react";
 
-const modes = [
-  {
-    title: "Describe",
-    description: "Understand objects, paths, and surroundings.",
-    to: "/camera/describe",
-    icon: Eye,
-  },
-  {
-    title: "Read Text",
-    description: "Read visible signs, labels, documents, and menus.",
-    to: "/camera/read",
-    icon: FileText,
-  },
-  {
-    title: "Find Object",
-    description: "Choose an object and open the camera.",
-    to: "/find",
-    icon: Search,
-  },
-  {
-    title: "Assist",
-    description: "Check for obvious obstacles in view.",
-    to: "/camera/assist",
-    icon: TriangleAlert,
-  },
-];
+import { useNavigate } from "react-router-dom";
+
+import ModeCard from "../components/common/ModeCard.jsx";
+import { useSpokenAction } from "../hooks/accessibilty/useSpokenAction.js";
+
 
 export default function HomePage() {
-  const { data, isLoading, isError } = useHealth();
-  const status = isLoading
-    ? "Checking API"
-    : isError
-      ? "API offline"
-      : (data?.status ?? "Online");
+  const navigate = useNavigate();
+
+  const { trigger, isArmed } = useSpokenAction();
 
   return (
-    <main className="mx-auto flex min-h-screen w-full max-w-5xl flex-col px-5 py-6">
-      <header className="flex items-center justify-between gap-4">
+    <main className="mx-auto min-h-screen w-full max-w-6xl px-4 py-8 sm:px-6">
+      <header className="flex items-start justify-between gap-6">
         <div>
           <p className="text-sm font-medium text-emerald-700">Netra</p>
-          <h1 className="text-3xl font-bold text-slate-950">
+
+          <h1 className="mt-1 text-3xl font-semibold tracking-tight text-slate-950">
             AI visual assistant
           </h1>
         </div>
-        <nav className="flex gap-2 text-sm font-medium">
-          <Link
-            className="rounded-lg border border-slate-200 px-3 py-2 text-slate-700"
-            to="/history"
+
+        <nav className="flex gap-2" aria-label="Secondary navigation">
+          <button
+            type="button"
+            onClick={() =>
+              trigger({
+                id: "history",
+
+                announcement: "History  clicked. Press again to open.",
+
+                action: () => navigate("/history"),
+              })
+            }
+            className={`inline-flex min-h-11 items-center gap-2 rounded-xl border px-4 text-sm font-medium transition ${
+              isArmed("history")
+                ? "border-emerald-500 bg-emerald-50 text-emerald-800"
+                : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+            }`}
           >
+            <History size={18} />
             History
-          </Link>
-          <Link
-            className="rounded-lg border border-slate-200 px-3 py-2 text-slate-700"
-            to="/settings"
+          </button>
+
+          <button
+            type="button"
+            onClick={() =>
+              trigger({
+                id: "settings",
+
+                announcement: "Settings  clicked. Press again to open.",
+
+                action: () => navigate("/settings"),
+              })
+            }
+            className={`inline-flex min-h-11 items-center gap-2 rounded-xl border px-4 text-sm font-medium transition ${
+              isArmed("settings")
+                ? "border-emerald-500 bg-emerald-50 text-emerald-800"
+                : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+            }`}
           >
+            <Settings size={18} />
             Settings
-          </Link>
+          </button>
         </nav>
       </header>
 
-      <section className="mt-8 grid gap-4 sm:grid-cols-2">
-        {modes.map((mode) => (
-          <ModeCard key={mode.title} {...mode} />
-        ))}
-      </section>
+      <section
+        className="mt-10 grid gap-4 md:grid-cols-2"
+        aria-label="Netra modes"
+      >
+        <ModeCard
+          icon={Eye}
+          title="Describe"
+          description="Get a detailed description of your surroundings."
+          selected={isArmed("describe")}
+          onClick={() =>
+            trigger({
+              id: "describe",
 
-      <p className="mt-auto pt-8 text-sm text-slate-500">Server: {status}</p>
+              announcement: "Describe clicked. Press again to open.",
+
+              action: () => navigate("/camera/describe"),
+            })
+          }
+        />
+
+        <ModeCard
+          icon={FileText}
+          title="Read Text"
+          description="Read visible signs, labels, documents, and menus."
+          selected={isArmed("read")}
+          onClick={() =>
+            trigger({
+              id: "read",
+
+              announcement: "Read text clicked. Press again to open.",
+
+              action: () => navigate("/camera/read"),
+            })
+          }
+        />
+
+        <ModeCard
+          icon={Search}
+          title="Find Object"
+          description="Choose an object and let Netra help locate it."
+          selected={isArmed("find")}
+          onClick={() =>
+            trigger({
+              id: "find",
+
+              announcement: "Find object clicked. Press again to open.",
+
+              action: () => navigate("/find"),
+            })
+          }
+        />
+
+        <ModeCard
+          icon={ShieldAlert}
+          title="Walk Assist"
+          description="Get live awareness of objects and possible obstacles ahead."
+          selected={isArmed("assist")}
+          onClick={() =>
+            trigger({
+              id: "assist",
+
+              announcement: "Walk assist clicked. Press again to open.",
+
+              action: () => navigate("/camera/assist"),
+            })
+          }
+        />
+      </section>
     </main>
   );
 }
