@@ -1,17 +1,10 @@
-import {
-  Eye,
-  FileText,
-  Search,
-  ShieldAlert,
-  History,
-  Settings,
-} from "lucide-react";
+import { Eye, FileText, ShieldAlert, History, Settings } from "lucide-react";
 
 import { useNavigate } from "react-router-dom";
 
 import ModeCard from "../components/common/ModeCard.jsx";
-import { useSpokenAction } from "../hooks/accessibilty/useSpokenAction.js";
 
+import { useSpokenAction } from "../hooks/accessibilty/useSpokenAction.js";
 
 export default function HomePage() {
   const navigate = useNavigate();
@@ -36,7 +29,7 @@ export default function HomePage() {
               trigger({
                 id: "history",
 
-                announcement: "History  clicked. Press again to open.",
+                announcement: "History clicked. Press again to open.",
 
                 action: () => navigate("/history"),
               })
@@ -57,7 +50,7 @@ export default function HomePage() {
               trigger({
                 id: "settings",
 
-                announcement: "Settings  clicked. Press again to open.",
+                announcement: "Settings clicked. Press again to open.",
 
                 action: () => navigate("/settings"),
               })
@@ -111,25 +104,9 @@ export default function HomePage() {
         />
 
         <ModeCard
-          icon={Search}
-          title="Find Object"
-          description="Choose an object and let Netra help locate it."
-          selected={isArmed("find")}
-          onClick={() =>
-            trigger({
-              id: "find",
-
-              announcement: "Find object clicked. Press again to open.",
-
-              action: () => navigate("/find"),
-            })
-          }
-        />
-
-        <ModeCard
           icon={ShieldAlert}
           title="Walk Assist"
-          description="Get live awareness of objects and possible obstacles ahead."
+          description="Get walking directions with live awareness of nearby objects."
           selected={isArmed("assist")}
           onClick={() =>
             trigger({
@@ -137,7 +114,7 @@ export default function HomePage() {
 
               announcement: "Walk assist clicked. Press again to open.",
 
-              action: () => navigate("/camera/assist"),
+              action: () => navigate("/walk-assist"),
             })
           }
         />

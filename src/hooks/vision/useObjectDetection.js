@@ -25,6 +25,8 @@ export function useObjectDetection({
   useEffect(() => {
     if (!enabled) {
       setDetections([]);
+      setIsDetecting(false);
+
       return;
     }
 
@@ -69,20 +71,30 @@ export function useObjectDetection({
                 return;
               }
 
+              const frameArea = video.videoWidth * video.videoHeight;
+
               const filtered = predictions
                 .filter((prediction) => prediction.score >= minScore)
-                .map((prediction) => ({
-                  label: prediction.class,
+                .map((prediction) => {
+                  const [, , width, height] = prediction.bbox;
 
-                  confidence: prediction.score,
+                  const boxArea = Math.max(0, width) * Math.max(0, height);
 
-                  bbox: prediction.bbox,
+                  return {
+                    label: prediction.class,
 
-                  position: getObjectPosition(
-                    prediction.bbox,
-                    video.videoWidth,
-                  ),
-                }));
+                    confidence: prediction.score,
+
+                    bbox: prediction.bbox,
+
+                    areaRatio: frameArea > 0 ? boxArea / frameArea : 0,
+
+                    position: getObjectPosition(
+                      prediction.bbox,
+                      video.videoWidth,
+                    ),
+                  };
+                });
 
               setDetections(filtered);
             } catch (error) {
