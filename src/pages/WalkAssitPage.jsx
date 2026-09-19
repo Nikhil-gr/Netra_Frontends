@@ -658,225 +658,191 @@ export default function WalkAssistPage() {
   };
 
   return (
-    <main className="min-h-screen bg-[#030a12] pb-24 text-white md:pb-0">
+    <main className="min-h-screen bg-[#0b0f1a] pb-28 text-white md:pb-8">
       <DesktopHeader compact />
-      <div className="mx-auto w-full max-w-3xl px-4 py-6 sm:px-6 md:py-10">
-      <button
-        type="button"
-        onClick={() =>
-          trigger({
-            id: "walk-back",
-            announcement: "Back button clicked. Press again to return home.",
-            action: handleBack,
-          })
-        }
-        className={`inline-flex min-h-11 items-center gap-2 rounded-xl px-3 text-sm font-medium transition ${
-          isArmed("walk-back")
-            ? "bg-blue-500/10 text-blue-300 ring-2 ring-blue-400/20"
-            : "text-slate-300 hover:bg-white/5"
-        }`}
-      >
-        <ArrowLeft size={20} />
-        Back
-      </button>
+      <div className="mx-auto w-full max-w-xl px-4 py-5 sm:px-5 md:max-w-2xl md:py-10">
 
-      <section className="mt-10">
-        <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-500/10 text-blue-400">
-          <Navigation size={28} />
-        </div>
+        {/* Back */}
+        <button
+          type="button"
+          onClick={() => trigger({ id: "walk-back", announcement: "Back button clicked. Press again to return home.", action: handleBack })}
+          className={`inline-flex min-h-10 items-center gap-1.5 rounded-lg px-2 text-sm text-slate-400 transition hover:text-white ${
+            isArmed("walk-back") ? "text-blue-300" : ""
+          }`}
+        >
+          <ArrowLeft size={17} />
+          Back
+        </button>
 
-        <h1 className="mt-5 text-3xl font-semibold tracking-tight text-white sm:text-4xl">
-          Walk Assist
-        </h1>
-
-        <p className="mt-3 max-w-2xl leading-7 text-slate-400">
-          Netra asks where you want to go, listens automatically, suggests the
-          closest matching destination, then starts walking guidance after you
-          confirm.
-        </p>
-      </section>
-
-      <section
-        className="mt-8 rounded-3xl border border-white/10 bg-[#07111c] p-5 sm:p-6"
-        aria-live="polite"
-      >
-        <div className="flex items-start gap-3">
-          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-blue-500/10 text-blue-400">
-            {isListening ? <Mic size={21} /> : <Volume2 size={21} />}
-          </div>
-
-          <div className="min-w-0">
-            <p className="text-sm font-medium text-blue-400">
-              Voice conversation
-            </p>
-
-            <p className="mt-1 text-lg font-semibold leading-7 text-white">
-              {status}
-            </p>
-
-            {isListening && (
-              <p className="mt-2 text-sm font-medium text-blue-400">
-                Microphone is listening now.
-              </p>
-            )}
-          </div>
-        </div>
-
-        {recognitionError && !errorMessage && (
-          <p className="mt-4 rounded-2xl border border-amber-400/30 bg-amber-500/10 p-4 text-sm leading-6 text-amber-200">
-            {recognitionError}
+        {/* Header */}
+        <section className="mt-4 mb-5">
+          <h1 className="text-xl font-bold tracking-tight text-white">Walk Assist</h1>
+          <p className="mt-1 text-xs text-slate-500">
+            Say your destination — Netra finds it and provides turn-by-turn guidance.
           </p>
-        )}
-
-        {errorMessage && (
-          <p
-            className="mt-4 rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-sm leading-6 text-red-200"
-            role="alert"
-          >
-            {errorMessage}
-          </p>
-        )}
-      </section>
-
-      {query && (
-        <section className="mt-5 rounded-2xl border border-white/10 bg-[#07111c]/[0.025] p-4">
-          <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
-            Destination heard
-          </p>
-          <p className="mt-1 font-semibold text-white">{query}</p>
         </section>
-      )}
 
-      {results.length > 0 && (
-        <section className="mt-6" aria-label="Nearby destination matches">
-          <h2 className="text-lg font-semibold text-white">Nearby matches</h2>
+        {/* Status panel */}
+        <section
+          className="rounded-xl border border-white/[0.07] bg-[#111722] p-4"
+          aria-live="polite"
+        >
+          <div className="flex items-center gap-3">
+            <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border text-blue-400 transition-colors ${
+              isListening
+                ? "border-blue-500/30 bg-blue-500/10"
+                : "border-white/[0.07] bg-white/[0.03]"
+            }`}>
+              {isListening ? <Mic size={17} /> : <Volume2 size={17} />}
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="text-[10px] font-medium uppercase tracking-[0.16em] text-slate-600">
+                {isListening ? "Listening" : "Status"}
+              </p>
+              <p className="mt-0.5 text-sm font-medium text-slate-200 leading-5">{status}</p>
+            </div>
+          </div>
 
-          <div className="mt-3 space-y-3">
-            {results.slice(0, 5).map((destination, index) => {
-              const id = getDestinationKey(destination, index);
-              const actionId = `walk-destination-${id}`;
-              const isSuggested = suggestedIndex === index;
+          {recognitionError && !errorMessage && (
+            <p className="mt-3 rounded-lg border border-white/[0.05] bg-white/[0.02] p-3 text-xs leading-5 text-slate-400">
+              {recognitionError}
+            </p>
+          )}
+          {errorMessage && (
+            <p className="mt-3 rounded-lg border border-white/[0.05] bg-white/[0.02] p-3 text-xs leading-5 text-slate-400" role="alert">
+              {errorMessage}
+            </p>
+          )}
+        </section>
 
-              return (
-                <button
-                  type="button"
-                  key={id}
-                  disabled={isStartingRoute}
-                  onClick={() =>
-                    trigger({
+        {/* Destination heard */}
+        {query && (
+          <div className="mt-2.5 rounded-xl border border-blue-500/20 bg-blue-500/[0.06] px-4 py-3">
+            <p className="text-[10px] font-medium uppercase tracking-[0.16em] text-blue-400/60 mb-0.5">Destination</p>
+            <p className="text-sm font-semibold text-white">{query}</p>
+          </div>
+        )}
+
+        {/* Nearby results */}
+        {results.length > 0 && (
+          <section className="mt-5" aria-label="Nearby destination matches">
+            <p className="mb-2 text-[10px] font-medium uppercase tracking-[0.16em] text-slate-600">Nearby matches</p>
+            <div className="space-y-2">
+              {results.slice(0, 5).map((destination, index) => {
+                const id = getDestinationKey(destination, index);
+                const actionId = `walk-destination-${id}`;
+                const isSuggested = suggestedIndex === index;
+                return (
+                  <button
+                    type="button"
+                    key={id}
+                    disabled={isStartingRoute}
+                    onClick={() => trigger({
                       id: actionId,
-                      announcement: `${getDestinationName(
-                        destination,
-                      )}. Press again to start Walk Assist to this destination.`,
+                      announcement: `${getDestinationName(destination)}. Press again to start Walk Assist to this destination.`,
                       action: () => handleManualDestination(destination),
-                    })
-                  }
-                  className={`flex min-h-16 w-full items-start gap-3 rounded-2xl border p-4 text-left transition disabled:cursor-not-allowed disabled:opacity-50 ${
-                    isSuggested || isArmed(actionId)
-                      ? "border-blue-500 bg-blue-500/10 ring-2 ring-blue-400/20"
-                      : "border-white/10 bg-[#07111c] hover:border-blue-400/30"
-                  }`}
-                >
-                  <MapPin size={21} className="mt-0.5 shrink-0 text-blue-400" />
-
-                  <span className="min-w-0">
-                    <span className="block font-semibold text-white">
-                      {destination.name || destination.label}
-                    </span>
-
-                    {destination.label &&
-                      destination.label !== destination.name && (
-                        <span className="mt-1 block text-sm leading-5 text-slate-400">
-                          {destination.label}
+                    })}
+                    className={`flex min-h-[56px] w-full items-center gap-3 rounded-xl border px-4 py-3 text-left transition disabled:opacity-50 ${
+                      isSuggested || isArmed(actionId)
+                        ? "border-blue-500/30 bg-blue-500/[0.08]"
+                        : "border-white/[0.07] bg-[#111722] hover:border-white/[0.12] hover:bg-[#161e2e]"
+                    }`}
+                  >
+                    <MapPin size={16} className="shrink-0 text-blue-400" />
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-sm font-semibold text-white">
+                        {destination.name || destination.label}
+                      </span>
+                      {destination.label && destination.label !== destination.name && (
+                        <span className="mt-0.5 block text-xs text-slate-500">{destination.label}</span>
+                      )}
+                      {Number.isFinite(destination.distanceFromUserMeters) && (
+                        <span className="mt-0.5 block text-[10px] text-slate-600">
+                          ~{Math.round(destination.distanceFromUserMeters)} m away
                         </span>
                       )}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+        )}
 
-                    {Number.isFinite(destination.distanceFromUserMeters) && (
-                      <span className="mt-1 block text-xs text-slate-500">
-                        Approx. {Math.round(destination.distanceFromUserMeters)}{" "}
-                        m away by location
-                      </span>
-                    )}
-                  </span>
-                </button>
-              );
-            })}
+        {/* Text fallback */}
+        {(voiceFallback || !recognitionSupported) && (
+          <section className="mt-5 rounded-xl border border-white/[0.07] bg-[#111722] p-4">
+            <h2 className="text-sm font-semibold text-white">Type a destination</h2>
+            <input
+              id="walk-destination-input"
+              type="text"
+              value={query}
+              onChange={(event) => {
+                cancelConversation();
+                setQuery(event.target.value);
+                setResults([]);
+                setSuggestedIndex(-1);
+                setErrorMessage("");
+                setVoiceFallback(true);
+              }}
+              placeholder="e.g. Himalayan Java"
+              autoComplete="off"
+              className="mt-3 min-h-[44px] w-full rounded-xl border border-white/[0.08] bg-[#0b0f1a] px-4 text-sm text-white placeholder:text-slate-600 outline-none transition focus:border-blue-500/60 focus:ring-1 focus:ring-blue-500/30"
+            />
+            <button
+              type="button"
+              disabled={!query.trim() || isSearching || isStartingRoute}
+              onClick={() => trigger({
+                id: "typed-destination-search",
+                announcement: "Search destination button clicked. Press again to search nearby matches.",
+                action: handleTypedSearch,
+              })}
+              className={`mt-2.5 inline-flex min-h-[42px] w-full items-center justify-center gap-2 rounded-xl px-5 text-sm font-semibold text-white transition disabled:opacity-40 ${
+                isArmed("typed-destination-search") ? "bg-blue-700" : "bg-blue-600 hover:bg-blue-700"
+              }`}
+            >
+              {isSearching ? <LoaderCircle size={16} className="animate-spin" /> : <Search size={16} />}
+              {isSearching ? "Searching..." : "Search"}
+            </button>
+          </section>
+        )}
+
+        {/* Route loading */}
+        {isStartingRoute && (
+          <div className="mt-3 flex items-center gap-3 rounded-xl border border-white/[0.07] bg-[#111722] p-4" role="status">
+            <LoaderCircle size={16} className="animate-spin text-blue-400" />
+            <span className="text-sm text-slate-300">Creating your walking route...</span>
+          </div>
+        )}
+
+        {/* ── Quick tips ── */}
+        <section className="mt-6">
+          <p className="mb-2 text-[10px] font-medium uppercase tracking-[0.16em] text-slate-600">
+            How it works
+          </p>
+          <div className="space-y-2">
+            {[
+              { step: "1", text: "Activate voice assistant from the home screen" },
+              { step: "2", text: "Say \"Walk\" or \"Navigate\" to open this page" },
+              { step: "3", text: "Speak your destination when prompted" },
+              { step: "4", text: "Confirm and Netra starts guiding you" },
+            ].map(({ step, text }) => (
+              <div
+                key={step}
+                className="flex items-center gap-3 rounded-xl border border-white/[0.07] bg-[#111722] px-4 py-3"
+              >
+                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-blue-500/10 text-[11px] font-bold text-blue-400 border border-blue-500/15">
+                  {step}
+                </span>
+                <span className="text-[13px] text-slate-300">{text}</span>
+              </div>
+            ))}
           </div>
         </section>
-      )}
 
-      {(voiceFallback || !recognitionSupported) && (
-        <section className="mt-6 rounded-3xl border border-white/10 bg-[#07111c] p-5 sm:p-6">
-          <h2 className="font-semibold text-white">Type destination</h2>
-
-          <p className="mt-2 text-sm leading-6 text-slate-400">
-            Use this if automatic voice input is unavailable, blocked, or not
-            understood.
-          </p>
-
-          <label
-            htmlFor="walk-destination-input"
-            className="mt-5 block text-sm font-medium text-slate-200"
-          >
-            Destination
-          </label>
-
-          <input
-            id="walk-destination-input"
-            type="text"
-            value={query}
-            onChange={(event) => {
-              cancelConversation();
-              setQuery(event.target.value);
-              setResults([]);
-              setSuggestedIndex(-1);
-              setErrorMessage("");
-              setVoiceFallback(true);
-            }}
-            placeholder="For example: Himalayan Java"
-            autoComplete="off"
-            className="mt-2 min-h-14 w-full rounded-2xl border border-white/15 bg-[#0b1724] px-4 text-base text-white placeholder:text-slate-600 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-400/20"
-          />
-
-          <button
-            type="button"
-            disabled={!query.trim() || isSearching || isStartingRoute}
-            onClick={() =>
-              trigger({
-                id: "typed-destination-search",
-                announcement:
-                  "Search destination button clicked. Press again to search nearby matches.",
-                action: handleTypedSearch,
-              })
-            }
-            className={`mt-4 inline-flex min-h-14 w-full items-center justify-center gap-2 rounded-2xl px-5 font-semibold text-white transition disabled:cursor-not-allowed disabled:opacity-50 ${
-              isArmed("typed-destination-search")
-                ? "bg-blue-700 ring-4 ring-blue-400/20"
-                : "bg-blue-600 hover:bg-blue-700"
-            }`}
-          >
-            {isSearching ? (
-              <LoaderCircle size={20} className="animate-spin" />
-            ) : (
-              <Search size={20} />
-            )}
-
-            {isSearching ? "Searching..." : "Search destination"}
-          </button>
-        </section>
-      )}
-
-      {isStartingRoute && (
-        <div
-          className="mt-6 flex items-center gap-3 rounded-2xl border border-emerald-200 bg-blue-500/10 p-4 text-emerald-900"
-          role="status"
-        >
-          <LoaderCircle size={20} className="animate-spin" />
-          Creating your walking route...
-        </div>
-      )}
       </div>
       <MobileBottomNav pathname={locationRoute.pathname} />
     </main>
   );
 }
+

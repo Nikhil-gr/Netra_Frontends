@@ -26,6 +26,9 @@ const DIRECT = [
       "turn off voice assistant",
       "disable voice",
       "disable voice assistant",
+      "exit voice",
+      "exit assistant",
+      "exit",
     ],
   ],
   [
@@ -38,6 +41,8 @@ const DIRECT = [
       "that's enough",
       "that is enough",
       "stop",
+      "exit",
+      "hush",
     ],
   ],
   [
@@ -84,6 +89,18 @@ const DIRECT = [
   ],
   ["home", ["home", "go home", "back home", "main menu", "cancel"]],
   ["back", ["back", "go back", "previous", "previous screen"]],
+  [
+    "emergency",
+    [
+      "emergency",
+      "emergency help",
+      "call emergency",
+      "call 911",
+      "call emergency services",
+      "sos",
+      "help me",
+    ],
+  ],
   [
     "help",
     [

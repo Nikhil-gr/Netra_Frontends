@@ -1,37 +1,35 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowLeft, Camera, Volume2 } from "lucide-react";
+import { Camera, ChevronLeft, Volume2 } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import DescribeResult from "../components/results/DescribeResult.jsx";
+import ReadResult from "../components/results/ReadResults.jsx";
 
 import { useSpeechSynthesis } from "../hooks/speech/useSpeechSynthesis.js";
 import { useSpokenAction } from "../hooks/accessibilty/useSpokenAction.js";
 import { useNetraStore } from "../store/useNetraStore.js";
-import ReadResult from "../components/results/ReadResults.jsx";
 import { useNetraVoice } from "../voice/useNetraVoice.js";
-import { parseVoiceIntent } from "../voice/voiceIntents.js";
-import { openWalkAssist } from "../voice/openWalkAssist.js";
-import { MobileBottomNav } from "../components/layout/NetraNavigation.jsx";
+import {
+  DesktopHeader,
+  MobileBottomNav,
+} from "../components/layout/NetraNavigation.jsx";
 
 const RESULT_COPY = {
   describe: {
-    eyebrow: "Describe result",
-    title: "What Netra found",
+    eyebrow: "Scene Description",
+    title: "What Netra noticed",
   },
-
   read: {
-    eyebrow: "Read text result",
+    eyebrow: "Text Recognition",
     title: "What Netra read",
   },
-
   find: {
-    eyebrow: "Find result",
+    eyebrow: "Object Search",
     title: "What Netra found",
   },
-
   assist: {
-    eyebrow: "Assist result",
-    title: "What Netra noticed",
+    eyebrow: "Walk Assist",
+    title: "Route awareness",
   },
 };
 
@@ -40,34 +38,18 @@ export default function ResultPage() {
   const locationRoute = useLocation();
 
   const hasSpokenRef = useRef(false);
-  const conversationRef = useRef(0);
   const speechInterruptedRef = useRef(false);
-  const [resultSpeechDone, setResultSpeechDone] = useState(false);
-  const {
-    ask,
-    speakAndWait: voiceSpeakAndWait,
-    cancelConversation,
-    voiceAssistantActive,
-    voiceEnabled,
-    deactivateVoiceAssistant,
-  } = useNetraVoice();
+  const [, setResultSpeechDone] = useState(false);
 
   const currentResult = useNetraStore((state) => state.currentResult);
-
   const speechRate = useNetraStore((state) => state.speechRate);
   const autoSpeak = useNetraStore((state) => state.autoSpeak);
-  const setWalkInitialLocation = useNetraStore(
-    (state) => state.setWalkInitialLocation,
-  );
 
   const { speak, isSpeaking } = useSpeechSynthesis();
-
   const { trigger, isArmed } = useSpokenAction();
 
   const mode = currentResult?.mode;
   const result = currentResult?.result;
-
-  // Netra is English-only for MVP.
   const speechLanguage = "en-US";
 
   useEffect(() => {
@@ -93,145 +75,31 @@ export default function ResultPage() {
     }
 
     const timer = window.setTimeout(() => {
-      if (hasSpokenRef.current) {
-        return;
-      }
-
+      if (hasSpokenRef.current) return;
       hasSpokenRef.current = true;
 
       speak(result.spokenResponse, {
         language: speechLanguage,
-
         rate: speechRate,
-
         onEnd: () => setResultSpeechDone(true),
-
         onError: () => setResultSpeechDone(true),
       });
-    }, 350);
+    }, 250);
 
-    return () => {
-      window.clearTimeout(timer);
-    };
-  }, [autoSpeak, mode, result?.spokenResponse, speak, speechRate]);
-
-  useEffect(() => {
-    if (
-      !voiceAssistantActive ||
-      !voiceEnabled ||
-      !resultSpeechDone ||
-      (mode !== "describe" && mode !== "read")
-    )
-      return undefined;
-    const version = ++conversationRef.current;
-    let cancelled = false;
-    const run = async () => {
-      let prompt = speechInterruptedRef.current
-        ? "What can I help you with?"
-        : mode === "read"
-          ? "Would you like me to read something else?"
-          : "Would you like me to describe again?";
-      let confirmingHome = false;
-      while (!cancelled) {
-        const command = await ask(prompt);
-        prompt = "";
-        if (!command || cancelled) return;
-        const nextIntent = parseVoiceIntent(command, {
-          expectsConfirmation: true,
-        });
-        if (nextIntent.type === "stop_voice") {
-          deactivateVoiceAssistant();
-          return;
-        } else if (
-          nextIntent.type === "repeat" ||
-          nextIntent.type === "resume"
-        ) {
-          await voiceSpeakAndWait(result.spokenResponse);
-          prompt = "What can I help you with?";
-        } else if (nextIntent.type === "yes" && confirmingHome) {
-          navigate("/");
-          return;
-        } else if (
-          nextIntent.type === "yes" ||
-          nextIntent.type === "scan_again" ||
-          nextIntent.type === mode ||
-          nextIntent.type === "back"
-        ) {
-          navigate(`/camera/${mode}`);
-          return;
-        } else if (nextIntent.type === "describe") {
-          navigate("/camera/describe");
-          return;
-        } else if (nextIntent.type === "read") {
-          navigate("/camera/read");
-          return;
-        } else if (nextIntent.type === "walk") {
-          await openWalkAssist({ navigate, setWalkInitialLocation });
-          return;
-        } else if (nextIntent.type === "home") {
-          navigate("/");
-          return;
-        } else if (nextIntent.type === "help") {
-          await voiceSpeakAndWait(
-            "Say Repeat to hear the result again, Scan Again, Describe, Read Text, Walk Assist, Back, Home, Stop, Continue, or Guide.",
-          );
-          prompt = "What can I help you with?";
-        } else if (nextIntent.type === "no") {
-          confirmingHome = true;
-          prompt = "Would you like to return Home?";
-        } else {
-          prompt = "I didn't understand. Say Repeat, Scan Again, or Home.";
-        }
-      }
-    };
-    run();
-    return () => {
-      cancelled = true;
-      conversationRef.current += 1;
-      cancelConversation();
-    };
-  }, [
-    ask,
-    cancelConversation,
-    deactivateVoiceAssistant,
-    mode,
-    navigate,
-    result?.spokenResponse,
-    resultSpeechDone,
-    setWalkInitialLocation,
-    voiceAssistantActive,
-    voiceEnabled,
-    voiceSpeakAndWait,
-  ]);
+    return () => window.clearTimeout(timer);
+  }, [autoSpeak, mode, result?.spokenResponse, speak, speechLanguage, speechRate]);
 
   if (!currentResult || !result) {
     return (
-      <main className="mx-auto flex min-h-screen w-full max-w-xl flex-col justify-center bg-[#030a12] px-5 py-8 text-white">
-        <h1 className="text-2xl font-semibold text-white">
-          No result available
-        </h1>
-
-        <p className="mt-2 leading-7 text-slate-400">
-          Analyze something first.
+      <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center bg-[#080c14] px-5 text-white">
+        <h1 className="text-xl font-semibold text-white">No active result</h1>
+        <p className="mt-1 text-xs text-slate-400">
+          Capture a scene or scan text to see results here.
         </p>
-
         <button
           type="button"
-          onClick={() =>
-            trigger({
-              id: "empty-result-home",
-
-              announcement:
-                "Return home button clicked. Press again to return home.",
-
-              action: () => navigate("/"),
-            })
-          }
-          className={`mt-6 inline-flex min-h-12 w-fit items-center justify-center rounded-xl px-5 font-medium text-white ${
-            isArmed("empty-result-home")
-              ? "bg-blue-700 ring-4 ring-blue-400/20"
-              : "bg-blue-600"
-          }`}
+          onClick={() => navigate("/")}
+          className="mt-5 inline-flex min-h-[44px] w-fit items-center justify-center rounded-full bg-blue-600 px-5 text-xs font-semibold text-white"
         >
           Return home
         </button>
@@ -240,13 +108,9 @@ export default function ResultPage() {
   }
 
   const repeatResult = () => {
-    if (!result.spokenResponse) {
-      return;
-    }
-
+    if (!result.spokenResponse) return;
     speak(result.spokenResponse, {
-      language: "en-US",
-
+      language: speechLanguage,
       rate: speechRate,
     });
   };
@@ -260,113 +124,90 @@ export default function ResultPage() {
   };
 
   const copy = RESULT_COPY[mode] || {
-    eyebrow: "Analysis result",
-
+    eyebrow: "Result",
     title: "What Netra found",
   };
 
   return (
-    <main className="mx-auto min-h-screen w-full max-w-3xl bg-[#030a12] px-4 py-6 pb-24 text-white sm:px-6">
-      <button
-        type="button"
-        onClick={() =>
-          trigger({
-            id: "result-home",
+    <main className="min-h-screen bg-[#0b0f1a] pb-24 text-slate-100 outline-none md:pb-8">
+      <DesktopHeader compact />
 
-            announcement: "Home button clicked. Press again to return home.",
+      <div className="mx-auto w-full max-w-xl px-4 pt-3 sm:px-6 md:max-w-2xl md:pt-8">
+        <header className="flex h-12 items-center justify-between mb-4">
+          <button
+            type="button"
+            onClick={goHome}
+            className="flex h-10 items-center gap-1.5 rounded-xl px-2.5 text-xs font-medium text-slate-400 hover:bg-white/[0.06] hover:text-white transition active:scale-95"
+            aria-label="Back to home"
+          >
+            <ChevronLeft size={19} />
+            <span>Home</span>
+          </button>
+          <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+            {copy.eyebrow}
+          </span>
+          <div className="w-10" />
+        </header>
 
-            action: goHome,
-          })
-        }
-        className={`inline-flex min-h-11 items-center gap-2 rounded-xl px-3 text-sm font-medium transition ${
-          isArmed("result-home")
-            ? "bg-blue-500/10 text-blue-300 ring-2 ring-blue-400/20"
-            : "text-slate-300 hover:bg-white/[0.06]"
-        }`}
-      >
-        <ArrowLeft size={20} />
-        Home
-      </button>
+        <section className="rounded-2xl border border-white/[0.07] bg-[#111722] p-5 sm:p-6">
+          <h1 className="text-lg font-bold text-white sm:text-xl">
+            {copy.title}
+          </h1>
 
-      <section className="mt-7">
-        <p className="text-sm font-medium text-blue-400">{copy.eyebrow}</p>
+          <p className="mt-3 text-base leading-relaxed text-slate-200">
+            {result.spokenResponse}
+          </p>
 
-        <h1 className="mt-1 text-3xl font-semibold tracking-tight text-white">
-          {copy.title}
-        </h1>
+          {isSpeaking && (
+            <div className="mt-3 inline-flex items-center gap-2 rounded-full bg-blue-500/15 border border-blue-500/25 px-3 py-1 text-xs font-medium text-blue-400">
+              <Volume2 size={15} />
+              <span>Netra is speaking...</span>
+            </div>
+          )}
 
-        <p
-          className="mt-4 text-xl leading-8 text-slate-200"
-          role="status"
-          aria-live="polite"
-        >
-          {result.spokenResponse}
-        </p>
+          <div className="mt-5 border-t border-white/[0.07] pt-4">
+            {mode === "describe" && <DescribeResult result={result} />}
+            {mode === "read" && <ReadResult result={result} />}
+          </div>
+        </section>
 
-        {isSpeaking && (
-          <div
-            className="mt-4 inline-flex items-center gap-2 rounded-full bg-blue-500/10 px-4 py-2 text-sm font-medium text-blue-400"
-            role="status"
+        <div className="mt-4 grid gap-2.5 sm:grid-cols-2">
+          <button
+            type="button"
+            onClick={() =>
+              trigger({
+                id: "listen-again",
+                announcement: "Listen again button clicked. Press again to repeat the result.",
+                action: repeatResult,
+              })
+            }
+            className={`flex min-h-[48px] items-center justify-center gap-2 rounded-full border border-white/10 bg-[#111722] px-5 text-xs font-semibold text-slate-200 transition hover:bg-[#161e2e] active:scale-95 ${
+              isArmed("listen-again") ? "ring-2 ring-blue-400" : ""
+            }`}
           >
             <Volume2 size={17} />
-            Netra is speaking
-          </div>
-        )}
-      </section>
+            Listen again
+          </button>
 
-      <div className="mt-7">
-        {mode === "describe" && <DescribeResult result={result} />}
-
-        {mode === "read" && <ReadResult result={result} />}
+          <button
+            type="button"
+            onClick={() =>
+              trigger({
+                id: "scan-again",
+                announcement: "Scan again button clicked. Press again to open camera.",
+                action: scanAgain,
+              })
+            }
+            className={`flex min-h-[48px] items-center justify-center gap-2 rounded-full bg-blue-600 px-5 text-xs font-semibold text-white shadow-md shadow-blue-600/25 transition hover:bg-blue-500 active:scale-95 ${
+              isArmed("scan-again") ? "ring-2 ring-blue-300" : ""
+            }`}
+          >
+            <Camera size={17} />
+            Scan again
+          </button>
+        </div>
       </div>
 
-      <div className="mt-7 grid gap-3 sm:grid-cols-2">
-        <button
-          type="button"
-          onClick={() =>
-            trigger({
-              id: "listen-again",
-
-              announcement:
-                "Listen again button clicked. Press again to repeat the result.",
-
-              action: repeatResult,
-            })
-          }
-          className={`inline-flex min-h-14 items-center justify-center gap-2 rounded-2xl border px-6 py-4 font-semibold transition ${
-            isArmed("listen-again")
-              ? "border-blue-500 bg-blue-500/10 text-blue-300 ring-4 ring-blue-400/20"
-              : "border-white/15 bg-[#07111c] text-slate-100 hover:bg-white/[0.04]"
-          }`}
-        >
-          <Volume2 size={21} />
-          Listen again
-        </button>
-
-        <button
-          type="button"
-          onClick={() =>
-            trigger({
-              id: "scan-again",
-
-              announcement:
-                mode === "read"
-                  ? "Scan again button clicked. Press again to open the camera and read more text."
-                  : "Scan again button clicked. Press again to open the camera.",
-
-              action: scanAgain,
-            })
-          }
-          className={`inline-flex min-h-14 items-center justify-center gap-2 rounded-2xl px-6 py-4 font-semibold text-white transition ${
-            isArmed("scan-again")
-              ? "bg-blue-700 ring-4 ring-blue-400/20"
-              : "bg-blue-600 hover:bg-blue-700"
-          }`}
-        >
-          <Camera size={21} />
-          Scan again
-        </button>
-      </div>
       <MobileBottomNav pathname={locationRoute.pathname} />
     </main>
   );

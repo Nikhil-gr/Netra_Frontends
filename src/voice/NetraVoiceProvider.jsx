@@ -14,7 +14,7 @@ import { openWalkAssist } from "./openWalkAssist.js";
 const LANDING_INTRO =
   "Welcome to Netra, your AI visual assistant. Double tap anywhere to activate the voice assistant.";
 const ACTIVATED =
-  "Voice assistant activated. What can I help you with? You can say Describe, Read Text, Walk Assist, or Guide.";
+  "Voice assistant activated. What can I help you with? You can say Describe, Read Text, Walk Assist, Guide, or Emergency.";
 const READY = "What can I help you with?";
 const GUIDE = {
   home: "Here's a quick guide. Describe uses your camera to explain your surroundings. Read Text reads visible signs, labels, menus, and documents. Walk Assist helps you choose a destination and provides walking guidance.",
@@ -139,16 +139,32 @@ export default function NetraVoiceProvider({ children }) {
     [recognition.listenDetailedWithTimeout, voiceAssistantActive, voiceEnabled],
   );
 
-  const deactivateVoiceAssistant = useCallback(() => {
-    cancelConversation();
-    bargeRef.current += 1;
-    setVoiceEnabled(false);
-    setVoiceAssistantActive(false);
-  }, [cancelConversation]);
+  const deactivateVoiceAssistant = useCallback(
+    (announce = true) => {
+      cancelConversation();
+      bargeRef.current += 1;
+      setVoiceEnabled(false);
+      setVoiceAssistantActive(false);
+      if (announce && autoSpeak) {
+        try {
+          window.speechSynthesis.cancel();
+          const u = new SpeechSynthesisUtterance("Voice assistant turned off.");
+          u.lang = "en-US";
+          u.rate = 1;
+          window.speechSynthesis.speak(u);
+        } catch (_) { /* optional */ }
+      }
+    },
+    [autoSpeak, cancelConversation],
+  );
 
   const activateVoiceAssistant = useCallback(async () => {
     if (activationRef.current) return activationRef.current;
-    if (voiceAssistantActive && voiceEnabled) return true;
+    if (voiceAssistantActive && voiceEnabled) {
+      firstActivationRef.current = true;
+      setActionsVersion((n) => n + 1);
+      return true;
+    }
     const pending = (async () => {
       setIsActivatingVoice(true);
       setFallbackMessage("");
@@ -221,15 +237,9 @@ export default function NetraVoiceProvider({ children }) {
               ).transcript
             : await listenWithTimeout(timeout);
           const intent = parseVoiceIntent(heard);
-          if (intent.type === "stop_voice") {
-            deactivateVoiceAssistant();
+          if (intent.type === "stop_voice" || intent.type === "stop_talking") {
+            deactivateVoiceAssistant(true);
             return null;
-          }
-          if (intent.type === "stop_talking") {
-            stopCurrentSpeech();
-            next = READY;
-            misses = 0;
-            continue;
           }
           if (
             interruptedRef.current &&
@@ -298,6 +308,12 @@ export default function NetraVoiceProvider({ children }) {
         return actions.walk
           ? actions.walk()
           : openWalkAssist({ navigate, setWalkInitialLocation });
+      if (intent === "guide" || intent === "help")
+        return actions.guide ? actions.guide() : navigate("/guide");
+      if (intent === "emergency")
+        return actions.emergency
+          ? actions.emergency()
+          : navigate("/emergency-call");
       if (intent === "history") return navigate("/history");
       if (intent === "settings") return navigate("/settings");
       if (intent === "back")
@@ -309,27 +325,7 @@ export default function NetraVoiceProvider({ children }) {
     [navigate, setWalkInitialLocation],
   );
 
-  useEffect(() => {
-    if (
-      location.pathname !== "/" ||
-      landingIntroStarted ||
-      voiceAssistantActive ||
-      !autoSpeak
-    )
-      return undefined;
-    const timer = window.setTimeout(() => {
-      if (landingIntroStarted) return;
-      landingIntroStarted = true;
-      speech.speak(LANDING_INTRO, { language: "en-US", rate: speechRate });
-    }, 450);
-    return () => window.clearTimeout(timer);
-  }, [
-    autoSpeak,
-    location.pathname,
-    speech.speak,
-    speechRate,
-    voiceAssistantActive,
-  ]);
+
 
   useEffect(() => {
     if (location.pathname === "/camera/assist") return undefined;
@@ -358,16 +354,22 @@ export default function NetraVoiceProvider({ children }) {
         } else if (intent.type === "repeat" || intent.type === "resume") {
           prompt = lastPromptRef.current || READY;
         } else if (
-          ["describe", "read", "walk", "history", "settings"].includes(
-            intent.type,
-          )
+          [
+            "describe",
+            "read",
+            "walk",
+            "guide",
+            "emergency",
+            "history",
+            "settings",
+          ].includes(intent.type)
         ) {
           return performDirect(intent.type);
         } else if (intent.type === "home" || intent.type === "back") {
           prompt = READY;
         } else {
           prompt =
-            "I didn't understand. Say Describe, Read Text, Walk Assist, or Guide.";
+            "I didn't understand. Say Describe, Read Text, Walk Assist, Guide, or Emergency.";
         }
       }
     };
@@ -460,6 +462,9 @@ export default function NetraVoiceProvider({ children }) {
           "quiet",
           "shush",
           "that's enough",
+          "exit",
+          "cancel",
+          "hush",
         ].some((word) => spoken.includes(word))
       )
         return;
@@ -472,8 +477,11 @@ export default function NetraVoiceProvider({ children }) {
           .listenWithTimeout(10000)
           .then((heard) => {
             if (bargeRef.current !== session) return;
-            if (parseVoiceIntent(heard).type === "stop_talking")
+            const intent = parseVoiceIntent(heard);
+            if (intent.type === "stop_talking" || intent.type === "stop_voice") {
               stopCurrentSpeech();
+              deactivateVoiceAssistant(true);
+            }
             else if (attempt < 2) {
               bargeTimer = window.setTimeout(
                 () => listenForStop(attempt + 1),
@@ -518,6 +526,56 @@ export default function NetraVoiceProvider({ children }) {
     voiceAssistantActive,
     voiceEnabled,
   ]);
+
+  // Global gesture shortcuts: double-click / double-tap anywhere on ANY page to activate voice assistant
+  // and triple tap anywhere on ANY page to trigger emergency call
+  const lastTapRef = useRef(0);
+  const tapCountRef = useRef(0);
+  const tapTimerRef = useRef(null);
+
+  useEffect(() => {
+    const handlePointerUp = (event) => {
+      const tag = event.target?.tagName?.toLowerCase();
+      if (["input", "textarea", "select"].includes(tag)) return;
+
+      // 3-tap Emergency
+      tapCountRef.current += 1;
+      if (tapTimerRef.current) clearTimeout(tapTimerRef.current);
+      if (tapCountRef.current >= 3) {
+        tapCountRef.current = 0;
+        if (location.pathname !== "/emergency-call") {
+          navigate("/emergency-call");
+        }
+        return;
+      }
+      tapTimerRef.current = setTimeout(() => {
+        tapCountRef.current = 0;
+      }, 550);
+
+      // Double-tap to activate / reactivate voice assistant
+      const now = Date.now();
+      const elapsed = now - lastTapRef.current;
+      if (elapsed > 0 && elapsed <= 450) {
+        lastTapRef.current = 0;
+        activateVoiceAssistant();
+        return;
+      }
+      lastTapRef.current = now;
+    };
+
+    const handleDblClick = (event) => {
+      const tag = event.target?.tagName?.toLowerCase();
+      if (["input", "textarea", "select"].includes(tag)) return;
+      activateVoiceAssistant();
+    };
+
+    window.addEventListener("pointerup", handlePointerUp);
+    window.addEventListener("dblclick", handleDblClick);
+    return () => {
+      window.removeEventListener("pointerup", handlePointerUp);
+      window.removeEventListener("dblclick", handleDblClick);
+    };
+  }, [activateVoiceAssistant, location.pathname, navigate]);
 
   const value = useMemo(
     () => ({

@@ -2,8 +2,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   ArrowLeft,
+  ChevronLeft,
+  CircleHelp,
   Eye,
   FileText,
+  LoaderCircle,
   Search,
   ShieldAlert,
   Sparkles,
@@ -235,6 +238,74 @@ export default function CameraPage() {
   });
 
   const analyzeMutation = useAnalyzeImage();
+
+  const [zoom, setZoom] = useState("1x");
+  const [torch, setTorch] = useState(false);
+  const [tipsOpen, setTipsOpen] = useState(false);
+
+  const handleToggleTorch = useCallback(async () => {
+    if (!stream) {
+      setTorch((prev) => !prev);
+      return;
+    }
+    const track = stream.getVideoTracks()[0];
+    if (!track) {
+      setTorch((prev) => !prev);
+      return;
+    }
+    try {
+      const capabilities = track.getCapabilities ? track.getCapabilities() : {};
+      if (capabilities.torch) {
+        await track.applyConstraints({
+          advanced: [{ torch: !torch }],
+        });
+      }
+      setTorch((prev) => !prev);
+    } catch {
+      setTorch((prev) => !prev);
+    }
+  }, [stream, torch]);
+
+  const handleToggleZoom = useCallback(() => {
+    setZoom((prev) => (prev === "1x" ? "2x" : "1x"));
+  }, []);
+
+  const handleHelp = useCallback(() => {
+    setTipsOpen((prev) => !prev);
+    speak(
+      mode === "read"
+        ? "Hold the text steadily in front of the camera with good lighting. Tap Read Aloud to listen."
+        : "Point your camera around you. Keep your phone steady. Tap Describe to hear what Netra sees.",
+    );
+  }, [mode, speak]);
+
+  const handleImageUpload = useCallback(
+    async (file) => {
+      if (!file) return;
+      try {
+        setAnalysisError("");
+        const base64 = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result);
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
+        const response = await analyzeMutation.mutateAsync({
+          image: base64,
+          mode: mode === "read" ? "read" : "describe",
+        });
+        setCurrentResult({
+          mode,
+          result: response,
+          timestamp: Date.now(),
+        });
+        navigate("/result");
+      } catch (err) {
+        setAnalysisError(getAnalysisErrorMessage(err, mode));
+      }
+    },
+    [analyzeMutation, mode, navigate, setCurrentResult],
+  );
 
   const isValidMode = MODES.includes(mode);
 
@@ -891,11 +962,12 @@ export default function CameraPage() {
   const isSpeaking = isEntrySpeaking || isDetectionSpeaking || isWalkSpeaking;
 
   return (
-    <main className="min-h-screen bg-[#030a12] pb-24 text-white md:pb-0">
+    <main className="min-h-screen bg-[#080c14] pb-24 text-slate-100 outline-none md:pb-8">
       <DesktopHeader compact />
 
-      <div className="mx-auto w-full max-w-[1500px] px-3 py-3 sm:px-5 md:px-6 md:py-6 lg:px-8">
-        <header className="mb-3 flex min-h-14 items-center justify-between rounded-2xl border border-white/10 bg-[#07111c] px-3 md:mb-5 md:px-5">
+      <div className="mx-auto w-full max-w-xl px-4 pt-3 sm:px-6 md:max-w-4xl md:pt-6">
+        {/* Minimal Header */}
+        <header className="flex h-12 items-center justify-between px-1 mb-3">
           <button
             type="button"
             onClick={() =>
@@ -908,222 +980,178 @@ export default function CameraPage() {
                 action: handleBack,
               })
             }
-            className={`inline-flex min-h-11 items-center gap-2 rounded-xl px-3 text-sm font-medium transition ${
-              isArmed("camera-back")
-                ? "bg-blue-500/20 text-blue-300 ring-2 ring-blue-400/30"
-                : "text-slate-300 hover:bg-[#07111c]/5 hover:text-white"
-            }`}
+            className="flex h-10 items-center gap-1.5 rounded-xl px-2.5 text-xs font-medium text-slate-400 hover:bg-white/[0.06] hover:text-white transition active:scale-95"
+            aria-label="Back to home"
           >
-            <ArrowLeft size={20} />
-            <span className="hidden sm:inline">Back</span>
+            <ChevronLeft size={19} />
+            <span>Back</span>
           </button>
 
-          <div className="flex items-center gap-2 text-sm font-semibold text-white">
-            <ModeIcon size={18} className="text-blue-400" />
-            <span>
-              {mode === "describe"
-                ? "Describe"
-                : mode === "read"
-                  ? "Read Text"
-                  : content.title}
-            </span>
-          </div>
+          <h1 className="text-sm font-semibold tracking-wide text-white">
+            {mode === "describe"
+              ? "Describe Surroundings"
+              : mode === "read"
+                ? "Read Text"
+                : content.title}
+          </h1>
 
-          <div className="w-11" aria-hidden="true" />
+          <button
+            type="button"
+            onClick={handleHelp}
+            className={`flex h-9 w-9 items-center justify-center rounded-full transition active:scale-95 ${
+              tipsOpen
+                ? "bg-blue-600/20 text-blue-400"
+                : "text-slate-400 hover:bg-white/[0.06] hover:text-white"
+            }`}
+            aria-label="Tips and help"
+            title="Help & Tips"
+          >
+            <CircleHelp size={19} />
+          </button>
         </header>
 
-        <section className="grid gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(300px,1fr)] lg:gap-5">
+        {/* Tips Dropdown Banner */}
+        {tipsOpen && (
+          <div className="mb-3 rounded-2xl border border-blue-500/20 bg-[#0d1624] p-3.5 text-xs text-slate-300">
+            <p className="font-semibold text-blue-300">Tips for clearer results:</p>
+            <ul className="mt-1.5 space-y-1 list-disc list-inside text-slate-400">
+              <li>Keep phone steady while analyzing</li>
+              <li>Good natural lighting improves description detail</li>
+              <li>You can also tap the gallery button to upload an existing photo</li>
+            </ul>
+          </div>
+        )}
+
+        {/* Camera View and Actions Grid */}
+        <div className="grid gap-3.5 md:grid-cols-[minmax(0,1fr)_340px] md:gap-5 md:items-start">
           <div className="min-w-0">
-            <div className="relative">
-              <CameraView
-                videoRef={videoRef}
-                stream={stream}
-                error={error}
-                isStarting={isStarting}
-                placeholderSrc={
-                  mode === "read"
-                    ? "/netra_WPA/04_read_text_scene.webp"
-                    : "/netra_WPA/03_describe_scene.webp"
-                }
-              />
+            <CameraView
+              videoRef={videoRef}
+              stream={stream}
+              error={error}
+              isStarting={isStarting}
+              helperText={
+                mode === "describe"
+                  ? "Point camera at your surroundings"
+                  : mode === "read"
+                    ? "Point camera at visible text"
+                    : mode === "find"
+                      ? `Searching for: ${findQuery}`
+                      : walkDestination
+                        ? `Route to ${walkDestination.label || walkDestination.name}`
+                        : undefined
+              }
+              zoom={zoom}
+              onZoomToggle={handleToggleZoom}
+              torch={torch}
+              onTorchToggle={handleToggleTorch}
+              onImageFile={handleImageUpload}
+            />
 
-              {(mode === "describe" || mode === "read") && (
-                <div className="pointer-events-none absolute left-1/2 top-5 z-10 -translate-x-1/2 whitespace-nowrap rounded-full border border-white/10 bg-black/55 px-4 py-2 text-xs font-medium text-white backdrop-blur-md sm:text-sm">
-                  {mode === "describe"
-                    ? "Point your camera at something"
-                    : "Point your camera at visible text"}
-                </div>
-              )}
-
-              {mode === "find" && (
-                <div className="pointer-events-none absolute left-1/2 top-5 z-10 -translate-x-1/2 rounded-full border border-white/10 bg-black/55 px-4 py-2 text-xs font-medium text-white backdrop-blur-md">
-                  Looking for: {findQuery}
-                </div>
-              )}
-
-              {mode === "assist" && walkDestination && (
-                <div className="pointer-events-none absolute left-4 right-4 top-5 z-10 rounded-2xl border border-white/10 bg-black/55 px-4 py-3 text-sm text-white backdrop-blur-md">
-                  <span className="text-slate-300">Walking to </span>
-                  <span className="font-semibold">
-                    {walkDestination.label || walkDestination.name}
-                  </span>
-                </div>
-              )}
-            </div>
-
-            {analysisError && (mode === "describe" || mode === "read") && (
+            {analysisError && (
               <div
-                className="mt-4 rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-sm leading-6 text-red-200"
+                className="mt-3 rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-xs leading-relaxed text-rose-200"
                 role="alert"
               >
                 {analysisError}
               </div>
             )}
-
-            {mode === "assist" && (
-              <div className="mt-4 rounded-2xl border border-white/10 bg-[#07111c]/[0.035] p-4 lg:hidden">
-                <div className="flex items-center gap-2">
-                  {autoSpeak ? (
-                    <Volume2 size={19} className="text-blue-400" />
-                  ) : (
-                    <VolumeX size={19} className="text-slate-500" />
-                  )}
-                  <p className="text-sm font-medium text-slate-200">
-                    {walkAssistPaused
-                      ? "Walk Assist paused"
-                      : autoSpeak
-                        ? "Audio guidance active"
-                        : "Automatic speech is disabled in Settings"}
-                  </p>
-                </div>
-              </div>
-            )}
           </div>
 
+          {/* Action Card Section */}
           <aside className="min-w-0">
-            {mode === "describe" && (
-              <div className="rounded-3xl border border-white/10 bg-[#07111c] p-5 sm:p-6">
-                <div className="flex items-start gap-4">
-                  <span className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-blue-500/15">
-                    <img
-                      src="/netra_WPA/07_describe_icon.png"
-                      alt=""
-                      className="h-11 w-11 object-contain"
-                    />
+            {(mode === "describe" || mode === "read") && (
+              <div className="rounded-2xl border border-white/[0.08] bg-[#0d131f] p-4 sm:p-5 shadow-sm">
+                <div className="flex items-start gap-3.5">
+                  <span
+                    className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${
+                      mode === "describe"
+                        ? "bg-blue-500/10 text-blue-400 border border-blue-500/20"
+                        : "bg-indigo-500/10 text-indigo-400 border border-indigo-500/20"
+                    }`}
+                  >
+                    {mode === "describe" ? (
+                      <Eye size={20} />
+                    ) : (
+                      <FileText size={20} />
+                    )}
                   </span>
                   <div>
-                    <h1 className="text-xl font-semibold">Describe</h1>
-                    <p className="mt-2 text-sm leading-6 text-slate-400">
-                      Get a clear, detailed description of objects, people,
-                      places and more around you.
+                    <h2 className="text-base font-semibold text-white">
+                      {mode === "describe" ? "Describe Surroundings" : "Read Visible Text"}
+                    </h2>
+                    <p className="mt-1 text-xs leading-normal text-slate-400">
+                      {mode === "describe"
+                        ? "Netra will analyze this camera view and speak what is in front of you."
+                        : "Netra will scan and read aloud visible text, documents, menus, and signs."}
                     </p>
                   </div>
                 </div>
-                <div className="mt-6">
-                  {analyzeMutation.isPending ? (
-                    <ProcessingState message="Understanding your surroundings..." />
-                  ) : (
-                    <button
-                      type="button"
-                      disabled={!stream || isStarting}
-                      onClick={() =>
-                        trigger({
-                          id: "describe-scene",
-                          announcement:
-                            "Describe scene button clicked. Press again to analyze the scene.",
-                          action: handleDescribe,
-                        })
-                      }
-                      className={`inline-flex min-h-14 w-full items-center justify-center gap-3 rounded-2xl bg-blue-600 px-5 font-semibold text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50 ${isArmed("describe-scene") ? "ring-4 ring-blue-400/30" : ""}`}
-                    >
-                      <Sparkles size={21} />
-                      Describe
-                    </button>
-                  )}
-                </div>
-                <div className="mt-5 border-t border-white/10 pt-5">
-                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                    Tips
-                  </p>
-                  <ul className="mt-3 space-y-2 text-sm leading-6 text-slate-400">
-                    <li>Point your camera at the scene.</li>
-                    <li>Keep the phone steady.</li>
-                    <li>Good lighting gives clearer results.</li>
-                  </ul>
-                </div>
-              </div>
-            )}
 
-            {mode === "read" && (
-              <div className="rounded-3xl border border-white/10 bg-[#07111c] p-5 sm:p-6">
-                <div className="flex items-start gap-4">
-                  <span className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-blue-500/15">
-                    <img
-                      src="/netra_WPA/09_read_text_icon.png"
-                      alt=""
-                      className="h-11 w-11 object-contain"
-                    />
-                  </span>
-                  <div>
-                    <h1 className="text-xl font-semibold">Read Text</h1>
-                    <p className="mt-2 text-sm leading-6 text-slate-400">
-                      Scan and listen to visible text aloud. Supports documents,
-                      signs, labels and more.
-                    </p>
-                  </div>
+                <div className="mt-4">
+                  <button
+                    type="button"
+                    disabled={analyzeMutation.isPending || (!stream && !isStarting)}
+                    onClick={() =>
+                      trigger({
+                        id: mode === "describe" ? "describe-scene" : "read-text",
+                        announcement:
+                          mode === "describe"
+                            ? "Describe button clicked. Press again to analyze."
+                            : "Read text button clicked. Press again to capture and read.",
+                        action: mode === "describe" ? handleDescribe : handleRead,
+                      })
+                    }
+                    className={`flex min-h-[52px] w-full items-center justify-center gap-2.5 rounded-full bg-blue-600 px-5 text-sm font-semibold text-white shadow-md shadow-blue-600/25 transition hover:bg-blue-500 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 ${
+                      isArmed("describe-scene") || isArmed("read-text")
+                        ? "ring-4 ring-blue-400/30"
+                        : ""
+                    }`}
+                  >
+                    {analyzeMutation.isPending ? (
+                      <>
+                        <LoaderCircle size={18} className="animate-spin" />
+                        <span>Analyzing with Netra...</span>
+                      </>
+                    ) : mode === "describe" ? (
+                      <>
+                        <Eye size={18} />
+                        <span>Describe Surroundings</span>
+                      </>
+                    ) : (
+                      <>
+                        <Volume2 size={18} />
+                        <span>Read Aloud</span>
+                      </>
+                    )}
+                  </button>
                 </div>
-                <div className="mt-6">
-                  {analyzeMutation.isPending ? (
-                    <ProcessingState message="Reading visible text..." />
-                  ) : (
-                    <button
-                      type="button"
-                      disabled={!stream || isStarting}
-                      onClick={() =>
-                        trigger({
-                          id: "read-text",
-                          announcement:
-                            "Read text button clicked. Press again to capture and read the visible text.",
-                          action: handleRead,
-                        })
-                      }
-                      className={`inline-flex min-h-14 w-full items-center justify-center gap-3 rounded-2xl bg-blue-600 px-5 font-semibold text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50 ${isArmed("read-text") ? "ring-4 ring-blue-400/30" : ""}`}
-                    >
-                      <Volume2 size={21} />
-                      Read Aloud
-                    </button>
-                  )}
-                </div>
-                <div className="mt-5 border-t border-white/10 pt-5 text-sm leading-6 text-slate-400">
-                  Keep the text centered, steady and well lit for the clearest
-                  reading.
-                </div>
+
+                <p className="mt-3 text-[11px] text-center text-slate-500">
+                  Tip: Hold phone steady with good lighting
+                </p>
               </div>
             )}
 
             {mode === "find" && (
-              <div className="space-y-4">
+              <div className="space-y-3">
                 <DetectionPanel
                   detections={visibleDetections}
                   isModelLoading={isModelLoading}
                   isDetecting={isDetecting}
                   error={detectionError}
                 />
-                <section className="rounded-3xl border border-white/10 bg-[#07111c] p-5">
-                  <div className="flex items-center gap-2">
-                    {autoSpeak ? (
-                      <Volume2 size={20} className="text-blue-400" />
-                    ) : (
-                      <VolumeX size={20} className="text-slate-500" />
-                    )}
-                    <h2 className="font-semibold">Voice feedback</h2>
+                <section className="rounded-2xl border border-white/[0.08] bg-[#0d131f] p-4">
+                  <div className="flex items-center gap-2 text-slate-300">
+                    <Volume2 size={18} className="text-blue-400" />
+                    <h2 className="text-sm font-semibold">Voice Feedback</h2>
                   </div>
-                  <p className="mt-3 text-sm leading-6 text-slate-400">
+                  <p className="mt-2 text-xs leading-relaxed text-slate-400">
                     {!liveAnnouncementsReady
                       ? "Starting voice guidance..."
                       : isSpeaking
                         ? "Netra is speaking."
-                        : "Netra is monitoring your surroundings."}
+                        : "Netra is scanning surroundings for " + findQuery}
                   </p>
                 </section>
               </div>
@@ -1147,7 +1175,7 @@ export default function CameraPage() {
                   trigger({
                     id: "repeat-direction",
                     announcement:
-                      "Repeat direction button clicked. Press again to hear the current route direction.",
+                      "Repeat direction button clicked. Press again to hear the route direction.",
                     action: handleRepeatDirection,
                   })
                 }
@@ -1166,7 +1194,7 @@ export default function CameraPage() {
                   trigger({
                     id: "end-walk-assist",
                     announcement:
-                      "End Walk Assist button clicked. Press again to end navigation and return home.",
+                      "End Walk Assist button clicked. Press again to end navigation.",
                     action: handleEndWalk,
                   })
                 }
@@ -1174,7 +1202,7 @@ export default function CameraPage() {
               />
             )}
           </aside>
-        </section>
+        </div>
       </div>
 
       <MobileBottomNav pathname={locationRoute.pathname} />

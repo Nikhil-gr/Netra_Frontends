@@ -1,26 +1,25 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  AlertTriangle,
+  BookOpen,
   ChevronRight,
   Eye,
-  Home,
+  HelpCircle,
+  Loader2,
   MapPin,
-  Mic,
   Navigation,
-  Settings,
+  PhoneCall,
+  X,
 } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useNetraStore } from "../store/useNetraStore.js";
 import { useNetraVoice } from "../voice/useNetraVoice.js";
+import { useSpeechSynthesis } from "../hooks/speech/useSpeechSynthesis.js";
 import { openWalkAssist as enterWalkAssist } from "../voice/openWalkAssist.js";
-import { MobileBottomNav } from "../components/layout/NetraNavigation.jsx";
-
-const FEATURE_ASSETS = {
-  describe: "/netra_WPA/07_describe_icon.webp",
-  guide: "/netra_WPA/08_navigation_icon.png",
-  read: "/netra_WPA/09_read_text_icon.webp",
-  history: "/netra_WPA/11_history_icon.png",
-  settings: "/netra_WPA/14_settings_icon.png",
-};
+import {
+  DesktopHeader,
+  MobileBottomNav,
+} from "../components/layout/NetraNavigation.jsx";
 
 export default function HomePage() {
   const navigate = useNavigate();
@@ -29,10 +28,11 @@ export default function HomePage() {
   const {
     registerActions,
     voiceAssistantActive,
-    voiceEnabled,
     isActivatingVoice,
     activateVoiceAssistant,
   } = useNetraVoice();
+
+  const { speak } = useSpeechSynthesis();
 
   const setWalkInitialLocation = useNetraStore(
     (state) => state.setWalkInitialLocation,
@@ -40,6 +40,9 @@ export default function HomePage() {
 
   const lastTapRef = useRef(0);
   const activationLockRef = useRef(false);
+  // Triple-tap emergency
+  const tapCountRef = useRef(0);
+  const tapTimerRef = useRef(null);
 
   const [entered, setEntered] = useState(() => {
     try {
@@ -49,132 +52,139 @@ export default function HomePage() {
     }
   });
 
+  const [emergencyOpen, setEmergencyOpen] = useState(false);
+
   const openWalkAssist = useCallback(async () => {
     await enterWalkAssist({ navigate, setWalkInitialLocation });
   }, [navigate, setWalkInitialLocation]);
 
-  const openDescribe = useCallback(
-    () => navigate("/camera/describe"),
-    [navigate],
-  );
-
+  const openDescribe = useCallback(() => navigate("/camera/describe"), [navigate]);
   const openRead = useCallback(() => navigate("/camera/read"), [navigate]);
+  const openGuide = useCallback(() => navigate("/guide"), [navigate]);
+
+  const handleEmergency = useCallback(() => {
+    setEmergencyOpen(true);
+    speak("Emergency help opened. Tap Call Emergency Services to dial emergency or share your location.");
+  }, [speak]);
 
   useEffect(
-    () =>
-      registerActions({
-        describe: openDescribe,
-        read: openRead,
-        walk: openWalkAssist,
-      }),
-    [openDescribe, openRead, openWalkAssist, registerActions],
+    () => registerActions({ describe: openDescribe, read: openRead, walk: openWalkAssist, guide: openGuide }),
+    [openDescribe, openGuide, openRead, openWalkAssist, registerActions],
   );
 
   const enterApp = useCallback(() => {
     setEntered(true);
-
+    try { window.sessionStorage.setItem("netra-ui-entered", "1"); } catch { /* optional */ }
     try {
-      window.sessionStorage.setItem("netra-ui-entered", "1");
-    } catch {
-      // Session storage is optional; UI still works without it.
-    }
+      window.speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance("Double tap anywhere to activate Netra voice assistant.");
+      u.lang = "en-US";
+      u.rate = 1;
+      window.speechSynthesis.speak(u);
+    } catch (_) { /* optional */ }
   }, []);
 
-  const activateFromGesture = useCallback(async () => {
-    if (
-      voiceAssistantActive ||
-      isActivatingVoice ||
-      activationLockRef.current
-    ) {
-      return;
-    }
-
-    activationLockRef.current = true;
+  // Splash screen speech ("Welcome to Netra.") and auto redirect after ~2.2s
+  useEffect(() => {
+    if (entered) return undefined;
 
     try {
-      await activateVoiceAssistant();
-    } finally {
-      activationLockRef.current = false;
+      window.speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance("Welcome to Netra.");
+      u.lang = "en-US";
+      u.rate = 1;
+      window.speechSynthesis.speak(u);
+    } catch (_) { /* optional */ }
+
+    const timer = setTimeout(() => {
+      enterApp();
+    }, 3000);
+
+    return () => clearTimeout(timer);
+  }, [entered, enterApp]);
+
+  // Triple-tap → emergency call
+  const triggerEmergencyTap = useCallback(() => {
+    tapCountRef.current += 1;
+    if (tapTimerRef.current) clearTimeout(tapTimerRef.current);
+    if (tapCountRef.current >= 3) {
+      tapCountRef.current = 0;
+      navigate("/emergency-call");
+      return;
     }
+    tapTimerRef.current = setTimeout(() => {
+      tapCountRef.current = 0;
+    }, 600);
+  }, [navigate]);
+
+  const activateFromGesture = useCallback(async () => {
+    if (voiceAssistantActive || isActivatingVoice || activationLockRef.current) return;
+    activationLockRef.current = true;
+    try { await activateVoiceAssistant(); } finally { activationLockRef.current = false; }
   }, [activateVoiceAssistant, isActivatingVoice, voiceAssistantActive]);
 
-  const handlePointerUp = useCallback(
-    (event) => {
-      if (event.pointerType === "mouse") return;
-
+  const handlePointerUp = useCallback((event) => {
+    if (event.pointerType === "mouse") return;
+    if (!entered) {
       const now = Date.now();
       const elapsed = now - lastTapRef.current;
-
-      if (elapsed > 0 && elapsed <= 420) {
+      if (elapsed > 0 && elapsed <= 450) {
         lastTapRef.current = 0;
-
-        if (!entered) {
-          enterApp();
-        } else if (!voiceAssistantActive) {
-          activateFromGesture();
-        }
-
+        enterApp();
         return;
       }
-
       lastTapRef.current = now;
-    },
-    [activateFromGesture, enterApp, entered, voiceAssistantActive],
-  );
+    }
+  }, [enterApp, entered]);
 
   const handleDoubleClick = useCallback(() => {
-    if (!entered) {
-      enterApp();
-    } else if (!voiceAssistantActive) {
-      activateFromGesture();
-    }
-  }, [activateFromGesture, enterApp, entered, voiceAssistantActive]);
+    if (!entered) enterApp();
+  }, [enterApp, entered]);
 
-  const handleKeyDown = useCallback(
-    (event) => {
-      if (!["Enter", " "].includes(event.key)) return;
+  const handleKeyDown = useCallback((event) => {
+    if (!["Enter", " "].includes(event.key)) return;
+    event.preventDefault();
+    if (!entered) enterApp();
+  }, [enterApp, entered]);
 
-      event.preventDefault();
-
-      const now = Date.now();
-
-      if (now - lastTapRef.current <= 700) {
-        lastTapRef.current = 0;
-
-        if (!entered) {
-          enterApp();
-        } else if (!voiceAssistantActive) {
-          activateFromGesture();
-        }
-      } else {
-        lastTapRef.current = now;
-      }
-    },
-    [activateFromGesture, enterApp, entered, voiceAssistantActive],
-  );
-
+  /* ── Splash ── */
   if (!entered) {
     return (
       <main
-        className="relative flex min-h-screen cursor-default items-center justify-center overflow-hidden bg-[#050b12] px-6 text-white outline-none"
+        className="relative flex min-h-screen cursor-pointer flex-col items-center justify-center bg-[#0b0f1a] px-6 py-14 text-white outline-none select-none"
+        onClick={enterApp}
         onPointerUp={handlePointerUp}
         onDoubleClick={handleDoubleClick}
         onKeyDown={handleKeyDown}
         tabIndex={0}
-        aria-label="Double tap or press Enter twice to continue to Netra"
+        aria-label="Welcome to Netra. Loading home screen..."
       >
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_45%,rgba(37,99,235,0.11),transparent_34%)]" />
-
-        <div className="relative flex w-full max-w-sm flex-col items-center text-center">
+        {/* Glow halo behind centered logo */}
+        <div className="relative flex flex-col items-center justify-center">
+          <div className="absolute h-48 w-48 rounded-full bg-blue-500/15 blur-3xl pointer-events-none" />
+          
+          {/* Centered logo */}
           <img
             src="/netra_WPA/05_netra_logo.png"
-            alt="Netra. See with confidence."
-            className="w-[245px] max-w-[72vw] object-contain"
+            alt="Netra"
+            className="relative z-10 w-[210px] max-w-[65vw] object-contain drop-shadow-[0_4px_24px_rgba(59,130,246,0.25)]"
           />
 
-          <p className="mt-24 text-sm font-medium tracking-wide text-slate-300 sm:mt-32">
-            Double tap anywhere to continue
-          </p>
+          {/* Spinner matching reference design */}
+          <div className="mt-10 flex flex-col items-center gap-3">
+            <Loader2 size={24} className="animate-spin text-blue-400/80" />
+            <span className="text-[11px] font-medium tracking-[0.2em] text-slate-400 uppercase">
+              Loading Netra...
+            </span>
+          </div>
+        </div>
+
+        {/* Footer text */}
+        <div className="absolute bottom-10 flex flex-col items-center">
+          <span className="text-[10px] tracking-[0.22em] text-slate-500 uppercase">
+Let your voice be your vision.
+Intelligent voice assistance that helps you understand your surroundings, navigate your world, and move through everyday life more independently.         
+ </span>
         </div>
       </main>
     );
@@ -183,296 +193,240 @@ export default function HomePage() {
   const features = [
     {
       key: "describe",
-      name: "Describe",
-      description: "Get a detailed description of your surroundings",
+      name: "Describe Surroundings",
+      description: "Audio description of what is around you",
       action: openDescribe,
-    },
-    {
-      key: "guide",
-      name: "Navigation / Guide",
-      description: "Find your way with voice guidance",
-      action: openWalkAssist,
+      icon: Eye,
     },
     {
       key: "read",
       name: "Read Text",
-      description: "Scan and listen to text aloud",
+      description: "Scan and listen to documents, signs and labels",
       action: openRead,
+      icon: BookOpen,
     },
     {
-      key: "history",
-      name: "History",
-      description: "View your recent activity",
-      action: () => navigate("/history"),
+      key: "walk",
+      name: "Walk Assist",
+      description: "Turn-by-turn walking route with obstacle awareness",
+      action: openWalkAssist,
+      icon: Navigation,
     },
     {
-      key: "settings",
-      name: "Settings",
-      description: "Customize your experience",
-      action: () => navigate("/settings"),
-      desktopOnly: true,
+      key: "guide",
+      name: "User Guide & Help",
+      description: "Manual of predefined commands and voice shortcuts",
+      action: openGuide,
+      icon: HelpCircle,
+    },
+    {
+      key: "emergency",
+      name: "Emergency Help",
+      description: "Call emergency services or share your location",
+      action: handleEmergency,
+      icon: PhoneCall,
     },
   ];
 
-  const voiceStatus = isActivatingVoice
-    ? "Activating voice assistant..."
-    : voiceAssistantActive && voiceEnabled
-      ? "Voice assistant active"
-      : "Double tap anywhere to activate assistant.";
-
   return (
     <main
-      className="min-h-screen bg-[#050b12] pb-24 text-white outline-none md:pb-0"
+      className="min-h-screen bg-[#0b0f1a] pb-28 text-slate-100 outline-none md:pb-8"
       onPointerUp={handlePointerUp}
       onDoubleClick={handleDoubleClick}
       onKeyDown={handleKeyDown}
       tabIndex={voiceAssistantActive ? undefined : 0}
-      aria-label={
-        voiceAssistantActive
-          ? undefined
-          : "Double tap or press Enter twice to activate Netra voice assistant"
-      }
+      aria-label={voiceAssistantActive ? undefined : "Double tap or press Enter twice to activate Netra voice assistant"}
     >
-      <header className="hidden h-[74px] border-b border-white/[0.07] bg-[#050b12] md:block">
-        <div className="mx-auto flex h-full w-full max-w-[1640px] items-center justify-between px-8 lg:px-12">
-          <button
-            type="button"
-            onClick={() => navigate("/")}
-            className="flex items-center gap-3 rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
-            aria-label="Netra home"
-          >
-            <img
-              src="/netra_WPA/05_netra_logo.png"
-              alt=""
-              className="h-10 w-auto max-w-[120px] object-contain"
-            />
-          </button>
+      <DesktopHeader />
 
-          <nav
-            className="absolute left-1/2 flex -translate-x-1/2 items-center gap-2"
-            aria-label="Primary navigation"
-          >
-            <button
-              type="button"
-              onClick={() => navigate("/")}
-              className="flex min-h-12 items-center gap-2 rounded-xl bg-[#0b274a] px-5 text-sm font-medium text-blue-200 transition hover:bg-[#10325e] focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
-            >
-              <Home size={18} />
-              Home
-            </button>
-
-            <button
-              type="button"
-              onClick={openWalkAssist}
-              className="flex min-h-12 items-center gap-2 rounded-xl px-5 text-sm font-medium text-slate-300 transition hover:bg-white/[0.04] hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
-            >
-              <MapPin size={18} />
-              Guide
-            </button>
-
-            <button
-              type="button"
-              onClick={() => navigate("/settings")}
-              className="flex min-h-12 items-center gap-2 rounded-xl px-5 text-sm font-medium text-slate-300 transition hover:bg-white/[0.04] hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
-            >
-              <Settings size={18} />
-              Settings
-            </button>
-          </nav>
-
-          <span className="text-[10px] font-semibold uppercase tracking-[0.36em] text-slate-500">
-            A clearer tomorrow
-          </span>
-        </div>
+      {/* Mobile logo header */}
+      <header className="flex items-center px-5 pt-5 pb-2 md:hidden">
+        <img
+          src="/netra_WPA/05_netra_logo.png"
+          alt="Netra"
+          className="h-12 w-auto object-contain"
+        />
       </header>
 
-      <section className="mx-auto w-full max-w-[1640px] md:px-8 md:py-5 lg:px-12 lg:py-6">
-        <div className="md:grid md:grid-cols-[minmax(0,1fr)_360px] md:overflow-hidden md:rounded-[22px] md:border md:border-white/[0.10] md:bg-[#07111b] xl:grid-cols-[minmax(0,1fr)_390px]">
-          {/* MOBILE HERO */}
-          <section className="relative min-h-[430px] overflow-visible bg-[#07111b] sm:min-h-[500px] md:hidden">
+      <div className="mx-auto w-full max-w-xl px-4 sm:px-5 md:max-w-4xl md:pt-4">
+
+        {/* ── Hero + overlapping mic ── */}
+        <div className="relative">
+          <div className="relative h-64 w-full overflow-hidden rounded-xl sm:h-72">
             <img
               src="/netra_WPA/02_home_hero.webp"
               alt="Person walking independently with a white cane"
-              className="absolute inset-0 h-full w-full object-cover object-[center_42%]"
+              className="h-full w-full object-cover object-[center_30%]"
             />
+            {/* Dark overlay */}
+            <div className="absolute inset-0 bg-[#0b0f1a]/45" />
+            <div className="absolute inset-0 bg-gradient-to-t from-[#0b0f1a] via-[#0b0f1a]/25 to-transparent" />
 
-            <div className="absolute inset-0 bg-gradient-to-b from-black/5 via-transparent to-[#050b12]/95" />
+            {/* Caption */}
+            <div className="absolute bottom-12 left-4 right-4">
+              <p className="text-sm font-semibold leading-snug text-white/90">
+Let your voice be your vision.
+            </p>
+              <p className="mt-0.5 text-[11px] text-slate-300/70">
+Experience the world around you through intelligent voice guidance, every day.              </p>
+            </div>
+          </div>
 
-            <div className="absolute inset-x-0 top-0 flex items-start justify-between px-5 pt-5">
-              <img
-                src="/netra_WPA/05_netra_logo.png"
-                alt="Netra"
-                className="h-9 w-auto max-w-[118px] object-contain"
-              />
-
-              <span className="mt-1 text-[8px] font-semibold uppercase tracking-[0.27em] text-white/75">
-                A clearer tomorrow
+          {/* Mic overlapping bottom of hero */}
+          <div className="absolute -bottom-7 left-0 right-0 flex justify-center">
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); activateFromGesture(); }}
+              aria-label="Activate voice assistant"
+              className="group relative flex items-center justify-center focus:outline-none"
+            >
+              {voiceAssistantActive && (
+                <>
+                  <span className="absolute h-16 w-16 animate-ping rounded-full bg-blue-500/15" style={{ animationDuration: "1.4s" }} />
+                  <span className="absolute h-20 w-20 animate-ping rounded-full bg-blue-500/08" style={{ animationDuration: "2s", animationDelay: "0.35s" }} />
+                </>
+              )}
+              {isActivatingVoice && !voiceAssistantActive && (
+                <span className="absolute h-16 w-16 animate-ping rounded-full bg-slate-400/12" style={{ animationDuration: "1s" }} />
+              )}
+              <span className={`relative z-10 flex h-[58px] w-[58px] items-center justify-center rounded-full border shadow-lg transition-all duration-200 group-active:scale-95 ${
+                voiceAssistantActive
+                  ? "border-blue-500/70 bg-blue-600 shadow-blue-600/25"
+                  : "border-white/15 bg-[#161d2e] shadow-black/30"
+              }`}>
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="22" height="22" viewBox="0 0 24 24"
+                  fill="none" stroke="currentColor" strokeWidth="1.75"
+                  strokeLinecap="round" strokeLinejoin="round"
+                  className={`transition-colors ${voiceAssistantActive ? "text-white" : "text-slate-300"} ${isActivatingVoice ? "animate-pulse" : ""}`}
+                >
+                  <rect x="9" y="2" width="6" height="11" rx="3" />
+                  <path d="M5 10a7 7 0 0 0 14 0" />
+                  <line x1="12" y1="19" x2="12" y2="22" />
+                  <line x1="8" y1="22" x2="16" y2="22" />
+                </svg>
               </span>
-            </div>
+            </button>
+          </div>
+        </div>
 
-            <div className="absolute right-5 top-[30%] w-[132px] text-right sm:right-8 sm:w-[160px]">
-              <p className="text-[18px] font-medium leading-[1.13] text-white drop-shadow-[0_2px_12px_rgba(0,0,0,0.7)] sm:text-[22px]">
-                A clearer
-                <br />
-                brighter
-                <br />
-                more independent
-                <br />
-                tomorrow
-              </p>
-              <span className="mt-3 ml-auto block h-[2px] w-8 bg-sky-400" />
-            </div>
+        {/* Mic label + wave bars */}
+        <div className="mt-10 flex flex-col items-center gap-1.5">
+          {voiceAssistantActive && (
+            <span className="flex items-end gap-[3px] h-[14px]" aria-hidden="true">
+              {[0.5, 1, 0.65, 1, 0.5].map((h, i) => (
+                <span
+                  key={i}
+                  className="w-[3px] rounded-full bg-blue-400"
+                  style={{
+                    height: `${h * 14}px`,
+                    animation: "wavebar 0.8s ease-in-out infinite alternate",
+                    animationDelay: `${i * 0.1}s`,
+                  }}
+                />
+              ))}
+            </span>
+          )}
+          <span className="text-[11px] text-slate-500">
+            {isActivatingVoice ? "Connecting..." : voiceAssistantActive ? "Speak your command" : "Double-tap anywhere · or tap mic"}
+          </span>
+        </div>
 
-            <div className="absolute inset-x-0 bottom-[-43px] z-30 flex flex-col items-center">
-              <div
-                className={`relative flex h-[88px] w-[88px] items-center justify-center rounded-full border border-blue-300/45 bg-[radial-gradient(circle_at_38%_30%,#8ec5ff_0%,#3b82f6_22%,#3d3a9b_60%,#111827_100%)] shadow-[0_0_20px_rgba(96,165,250,0.7),0_0_44px_rgba(79,70,229,0.45)] transition ${
-                  voiceAssistantActive && voiceEnabled
-                    ? "scale-105 shadow-[0_0_25px_rgba(96,165,250,0.9),0_0_58px_rgba(79,70,229,0.62)]"
-                    : ""
-                } ${isActivatingVoice ? "animate-pulse" : ""}`}
-                aria-hidden="true"
-              >
-                <div className="absolute inset-[8px] rounded-full border border-white/20" />
-                <Mic size={39} className="relative z-10 text-white" />
-              </div>
-
-              <p className="mt-3 px-4 text-center text-[12px] font-medium text-slate-200">
-                {voiceStatus}
-              </p>
-            </div>
-          </section>
-
-          {/* DESKTOP HERO */}
-          <section className="relative hidden min-h-[410px] overflow-hidden bg-[#07111b] md:block xl:min-h-[450px]">
-            <img
-              src="/netra_WPA/02_home_hero.webp"
-              alt="Person walking independently with a white cane"
-              className="absolute inset-0 h-full w-full object-cover object-[55%_42%]"
-            />
-
-            <div className="absolute inset-0 bg-gradient-to-r from-[#06101a]/98 via-[#06101a]/50 to-transparent" />
-            <div className="absolute inset-0 bg-gradient-to-t from-[#050b12]/35 via-transparent to-black/10" />
-
-            <div className="absolute left-8 top-1/2 z-10 w-[290px] -translate-y-[54%] lg:left-12 xl:left-16 xl:w-[330px]">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.30em] text-sky-300">
-                A clearer tomorrow
-              </p>
-
-              <h1 className="mt-3 text-[54px] font-semibold leading-none tracking-[-0.045em] text-white xl:text-[62px]">
-                Netra
-              </h1>
-
-              <p className="mt-3 max-w-[300px] text-[18px] leading-[1.35] text-slate-100 xl:text-[20px]">
-                Technology for a more independent tomorrow
-              </p>
-
-              <p className="mt-3 max-w-[300px] text-[12px] leading-5 text-slate-300">
-                Your AI companion that helps you see, understand and navigate
-                the world with confidence.
-              </p>
-
-              <button
-                type="button"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  activateFromGesture();
-                }}
-                className="mt-4 inline-flex min-h-10 items-center gap-3 rounded-full bg-gradient-to-r from-[#2580ff] to-[#1f6ef2] px-6 text-xs font-semibold text-white shadow-[0_8px_28px_rgba(37,99,235,0.25)] transition hover:brightness-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-300"
-              >
-                <Mic size={17} />
-                {isActivatingVoice
-                  ? "Activating..."
-                  : voiceAssistantActive && voiceEnabled
-                    ? "Voice Assistant Active"
-                    : "Start with Voice Assistant"}
-              </button>
-
-              <p className="mt-2 pl-7 text-[11px] text-slate-400">
-                Double tap anywhere to activate assistant
-              </p>
-            </div>
-
-            <div className="absolute right-[8%] top-[23%] z-10 w-[150px] xl:right-[7%] xl:w-[180px]">
-              <p className="text-[17px] font-medium leading-[1.20] text-white drop-shadow-[0_2px_10px_rgba(0,0,0,0.45)] xl:text-[20px]">
-                A clearer
-                <br />
-                brighter
-                <br />
-                more independent
-                <br />
-                tomorrow
-              </p>
-              <span className="mt-4 block h-[2px] w-9 bg-sky-400" />
-            </div>
-          </section>
-
-          {/* FEATURES */}
-          <aside className="relative z-20 bg-[#07111b] px-4 pb-5 pt-5 sm:px-5 md:flex md:min-h-[410px] md:flex-col md:px-5 md:py-5 xl:min-h-[450px] xl:px-6">
-            <div className="hidden md:block">
-              <h2 className="text-[16px] font-semibold tracking-tight text-white">
-                Access Netra
-              </h2>
-              <p className="mt-1 text-xs text-slate-400">
-                Choose a tool or use the voice assistant.
-              </p>
-            </div>
-
-            <div className="space-y-2 md:mt-4 md:space-y-2">
-              {features.map((feature) => (
+        {/* ── Feature cards — individual ── */}
+        <div className="mt-6">
+          <p className="mb-2.5 text-[10px] font-medium uppercase tracking-[0.18em] text-slate-600">
+            Features
+          </p>
+          <div className="space-y-2">
+            {features.map((feature) => {
+              const Icon = feature.icon;
+              return (
                 <button
                   key={feature.key}
                   type="button"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    feature.action();
-                  }}
-                  className={`${feature.desktopOnly ? "hidden md:flex" : "flex"} min-h-[58px] w-full items-center gap-3 rounded-[14px] border border-white/[0.09] bg-[#0a1520] px-3 py-2 text-left transition hover:border-blue-400/30 hover:bg-[#0d1a28] focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 md:min-h-[62px] md:px-3`}
+                  onClick={(e) => { e.stopPropagation(); feature.action(); }}
+                  className="flex min-h-[60px] w-full items-center gap-3.5 rounded-xl border border-white/[0.07] bg-[#111722] px-4 py-3 text-left transition hover:border-white/[0.12] hover:bg-[#161e2e] active:scale-[0.99] focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
                 >
-                  <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[10px] bg-[#102033]">
-                    <img
-                      src={FEATURE_ASSETS[feature.key]}
-                      alt=""
-                      className="h-8 w-8 object-contain"
-                    />
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-500/10 text-blue-400 border border-blue-500/15">
+                    <Icon size={17} strokeWidth={1.75} />
                   </span>
-
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-[15px] font-semibold leading-5 text-white md:text-[16px]">
+                  <div className="min-w-0 flex-1">
+                    <span className="block text-[13px] font-semibold text-slate-100">
                       {feature.name}
                     </span>
-                    <span className="mt-0.5 block text-xs leading-5 text-slate-400">
+                    <span className="mt-0.5 block text-[11px] leading-normal text-slate-500">
                       {feature.description}
                     </span>
-                  </span>
-
-                  <ChevronRight
-                    size={20}
-                    strokeWidth={2}
-                    className="shrink-0 text-slate-500"
-                  />
+                  </div>
+                  <ChevronRight size={14} className="shrink-0 text-slate-600" />
                 </button>
-              ))}
-            </div>
-
-            <div className="mt-5 hidden rounded-[17px] border border-white/[0.09] bg-[#0a1520] p-5 text-sm text-slate-400 md:block">
-              <div className="flex items-center gap-2.5 text-slate-200">
-                {voiceAssistantActive ? (
-                  <Eye size={18} />
-                ) : (
-                  <Navigation size={18} />
-                )}
-                <span className="font-medium">Voice-first accessibility</span>
-              </div>
-
-              <p className="mt-3 leading-6">
-                {voiceAssistantActive
-                  ? "Netra is ready for Describe, Read Text, Walk Assist, or Guide commands."
-                  : "Double tap anywhere on this page whenever Netra is idle to wake the assistant."}
-              </p>
-            </div>
-          </aside>
+              );
+            })}
+          </div>
         </div>
-      </section>
+      </div>
+
+      <style>{`
+        @keyframes wavebar {
+          from { transform: scaleY(0.3); }
+          to   { transform: scaleY(1); }
+        }
+      `}</style>
+
+      {/* Emergency Modal */}
+      {emergencyOpen && (
+        <div
+          role="dialog" aria-modal="true" aria-labelledby="emergency-title"
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/65 p-4 sm:items-center"
+          onClick={() => setEmergencyOpen(false)}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl border border-white/[0.08] bg-[#111722] p-5 text-white"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-3">
+              <h3 id="emergency-title" className="text-sm font-bold text-white">
+                Emergency Help
+              </h3>
+              <button
+                type="button"
+                onClick={() => setEmergencyOpen(false)}
+                className="rounded-lg p-1.5 text-slate-500 hover:text-white transition"
+                aria-label="Close"
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <p className="text-xs leading-relaxed text-slate-400 mb-4">
+              Immediate medical, police, or safety assistance.
+            </p>
+            <div className="space-y-2">
+              <a
+                href="tel:911"
+                className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-semibold text-white transition hover:bg-blue-500 active:scale-[0.98]"
+              >
+                <PhoneCall size={16} />
+                Call Emergency Services (911 / 112)
+              </a>
+              <button
+                type="button"
+                onClick={() => { speak("Sharing current coordinates with emergency contacts."); setEmergencyOpen(false); }}
+                className="flex min-h-10 w-full items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.03] px-4 text-xs font-medium text-slate-300 transition hover:bg-white/[0.07]"
+              >
+                Announce / Share Location
+              </button>
+              <button
+                type="button"
+                onClick={() => setEmergencyOpen(false)}
+                className="flex min-h-9 w-full items-center justify-center text-xs text-slate-600 hover:text-slate-400"
+              >
+                Dismiss
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <MobileBottomNav pathname={location.pathname} />
     </main>

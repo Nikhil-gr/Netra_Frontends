@@ -1,13 +1,26 @@
-import { useEffect } from "react";
-import { Camera, LoaderCircle, VideoOff } from "lucide-react";
+import { useEffect, useRef } from "react";
+import {
+  Camera,
+  Image as ImageIcon,
+  Loader2,
+  VideoOff,
+  Zap,
+} from "lucide-react";
 
 export default function CameraView({
   videoRef,
   stream,
   error,
   isStarting,
-  placeholderSrc = "/netra_WPA/03_describe_scene.webp",
+  helperText,
+  onImageFile,
+  zoom = "1x",
+  onZoomToggle,
+  torch = false,
+  onTorchToggle,
 }) {
+  const fileInputRef = useRef(null);
+
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
@@ -21,64 +34,133 @@ export default function CameraView({
     };
   }, [stream, videoRef]);
 
-  if (error) {
-    return (
-      <div className="flex min-h-[390px] sm:min-h-[440px] items-center justify-center rounded-3xl border border-white/10 bg-[#050b12] p-6 text-center text-white md:min-h-[560px]">
-        <div>
-          <VideoOff size={42} className="mx-auto text-slate-400" />
-          <p className="mt-4 max-w-sm text-sm leading-6 text-slate-300">
-            {error}
-          </p>
-        </div>
-      </div>
-    );
-  }
+  const handleGalleryClick = (e) => {
+    e.stopPropagation();
+    fileInputRef.current?.click();
+  };
 
-  if (isStarting || !stream) {
-    return (
-      <div className="relative flex min-h-[390px] sm:min-h-[440px] items-center justify-center overflow-hidden rounded-3xl border border-white/10 bg-[#050b12] text-white md:min-h-[560px]">
-        <img
-          src={placeholderSrc}
-          alt=""
-          className="absolute inset-0 h-full w-full object-cover opacity-20 blur-[1px]"
-        />
-        <div className="absolute inset-0 bg-[#02070d]/65" />
-        <div className="relative text-center">
-          {isStarting ? (
-            <LoaderCircle
-              className="mx-auto animate-spin text-blue-400"
-              size={40}
-            />
-          ) : (
-            <Camera className="mx-auto text-slate-300" size={40} />
-          )}
-          <p className="mt-3 text-sm text-slate-300">
-            {isStarting ? "Starting camera..." : "Waiting for camera"}
-          </p>
-        </div>
-      </div>
-    );
-  }
+  const handleFileChange = (e) => {
+    const file = e.target.files?.[0];
+    if (file && onImageFile) {
+      onImageFile(file);
+    }
+  };
+
+  const isLive = Boolean(stream && !error && !isStarting);
 
   return (
-    <div className="relative min-h-[390px] overflow-hidden rounded-2xl border border-white/10 bg-black sm:min-h-[440px] md:min-h-[560px] md:rounded-3xl">
-      <video
-        ref={videoRef}
-        autoPlay
-        muted
-        playsInline
-        className="absolute inset-0 h-full w-full object-cover"
-        aria-label="Live camera preview"
+    <div className="relative aspect-[4/5] sm:aspect-[3/4] md:aspect-[4/3] max-h-[500px] w-full overflow-hidden rounded-2xl border border-white/[0.08] bg-black shadow-lg">
+      {/* Hidden file input for photo upload */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={handleFileChange}
       />
-      <div className="pointer-events-none absolute inset-4 rounded-2xl border border-white/20">
-        <span className="absolute -left-px -top-px h-7 w-7 rounded-tl-2xl border-l-2 border-t-2 border-white" />
-        <span className="absolute -right-px -top-px h-7 w-7 rounded-tr-2xl border-r-2 border-t-2 border-white" />
-        <span className="absolute -bottom-px -left-px h-7 w-7 rounded-bl-2xl border-b-2 border-l-2 border-white" />
-        <span className="absolute -bottom-px -right-px h-7 w-7 rounded-br-2xl border-b-2 border-r-2 border-white" />
+
+      {/* Video Feed */}
+      {isLive ? (
+        <video
+          ref={videoRef}
+          autoPlay
+          muted
+          playsInline
+          style={{
+            transform: zoom === "2x" ? "scale(1.75)" : "scale(1)",
+            transition: "transform 0.25s ease",
+          }}
+          className="absolute inset-0 h-full w-full object-cover"
+          aria-label="Live camera preview"
+        />
+      ) : (
+        <div className="absolute inset-0 flex flex-col items-center justify-center bg-[#0a0e16] p-6 text-center">
+          {error ? (
+            <div className="flex flex-col items-center">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-red-500/10 text-red-400">
+                <VideoOff size={24} />
+              </div>
+              <p className="mt-3 text-sm font-medium text-slate-200">Camera Unavailable</p>
+              <p className="mt-1 text-xs text-slate-400 max-w-xs">{error}</p>
+            </div>
+          ) : isStarting ? (
+            <div className="flex flex-col items-center">
+              <Loader2 className="animate-spin text-blue-400" size={32} />
+              <p className="mt-3 text-xs font-medium text-slate-300">
+                Starting camera...
+              </p>
+            </div>
+          ) : (
+            <div className="flex flex-col items-center">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white/[0.05] text-slate-400">
+                <Camera size={24} />
+              </div>
+              <p className="mt-3 text-xs text-slate-400">
+                Waiting for camera feed
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Minimal Real Viewfinder Corner Tick Marks */}
+      <div className="pointer-events-none absolute inset-4">
+        <span className="absolute left-0 top-0 h-5 w-5 border-l-2 border-t-2 border-white/70 rounded-tl-sm" />
+        <span className="absolute right-0 top-0 h-5 w-5 border-r-2 border-t-2 border-white/70 rounded-tr-sm" />
+        <span className="absolute bottom-0 left-0 h-5 w-5 border-b-2 border-l-2 border-white/70 rounded-bl-sm" />
+        <span className="absolute bottom-0 right-0 h-5 w-5 border-b-2 border-r-2 border-white/70 rounded-br-sm" />
       </div>
-      <div className="absolute left-4 top-4 flex items-center gap-2 rounded-full border border-white/10 bg-black/55 px-3 py-2 text-xs font-medium text-white backdrop-blur-md">
-        <span className="h-2 w-2 rounded-full bg-emerald-400" />
-        Camera active
+
+      {/* Top Helper Pill */}
+      {helperText && (
+        <div className="pointer-events-none absolute inset-x-0 top-3 z-10 flex justify-center px-4">
+          <div className="rounded-full bg-black/65 border border-white/10 px-3.5 py-1 text-[11px] font-medium text-slate-200 shadow-sm backdrop-blur-sm">
+            {helperText}
+          </div>
+        </div>
+      )}
+
+      {/* Bottom Camera Controls: Upload, Zoom, Flash */}
+      <div className="absolute inset-x-0 bottom-3 z-10 flex items-center justify-between px-6 sm:px-10">
+        <button
+          type="button"
+          onClick={handleGalleryClick}
+          className="flex h-10 w-10 items-center justify-center rounded-full bg-black/60 border border-white/15 text-slate-200 transition hover:bg-black/80 hover:text-white active:scale-95"
+          title="Upload image from gallery"
+          aria-label="Upload photo from gallery"
+        >
+          <ImageIcon size={18} />
+        </button>
+
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onZoomToggle?.();
+          }}
+          className="flex h-10 w-10 items-center justify-center rounded-full bg-black/60 border border-white/15 text-xs font-semibold text-slate-200 transition hover:bg-black/80 hover:text-white active:scale-95"
+          title="Toggle camera zoom"
+          aria-label={`Toggle zoom, current ${zoom}`}
+        >
+          {zoom}
+        </button>
+
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onTorchToggle?.();
+          }}
+          className={`flex h-10 w-10 items-center justify-center rounded-full border transition active:scale-95 ${
+            torch
+              ? "bg-amber-400 text-black border-amber-300"
+              : "bg-black/60 border-white/15 text-slate-200 hover:bg-black/80 hover:text-white"
+          }`}
+          title="Toggle flashlight"
+          aria-label="Toggle flashlight"
+        >
+          <Zap size={18} className={torch ? "fill-black" : ""} />
+        </button>
       </div>
     </div>
   );
