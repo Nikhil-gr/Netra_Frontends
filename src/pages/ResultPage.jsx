@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ArrowLeft, Camera, Volume2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
@@ -8,6 +8,8 @@ import { useSpeechSynthesis } from "../hooks/speech/useSpeechSynthesis.js";
 import { useSpokenAction } from "../hooks/accessibilty/useSpokenAction.js";
 import { useNetraStore } from "../store/useNetraStore.js";
 import ReadResult from "../components/results/ReadResults.jsx";
+import { useNetraVoice } from "../voice/useNetraVoice.js";
+import { parseVoiceIntent } from "../voice/voiceIntents.js";
 
 const RESULT_COPY = {
   describe: {
@@ -35,10 +37,14 @@ export default function ResultPage() {
   const navigate = useNavigate();
 
   const hasSpokenRef = useRef(false);
+  const conversationRef = useRef(0);
+  const [resultSpeechDone, setResultSpeechDone] = useState(false);
+  const { ask, speakAndWait: voiceSpeakAndWait, cancelConversation } = useNetraVoice();
 
   const currentResult = useNetraStore((state) => state.currentResult);
 
   const speechRate = useNetraStore((state) => state.speechRate);
+  const autoSpeak = useNetraStore((state) => state.autoSpeak);
 
   const { speak, isSpeaking } = useSpeechSynthesis();
 
@@ -54,6 +60,7 @@ export default function ResultPage() {
     const shouldSpeakAutomatically = mode === "describe" || mode === "read";
 
     if (
+      !autoSpeak ||
       !shouldSpeakAutomatically ||
       !result?.spokenResponse ||
       hasSpokenRef.current
@@ -72,13 +79,85 @@ export default function ResultPage() {
         language: speechLanguage,
 
         rate: speechRate,
+
+        onEnd: () => setResultSpeechDone(true),
+
+        onError: () => setResultSpeechDone(true),
       });
     }, 350);
 
     return () => {
       window.clearTimeout(timer);
     };
-  }, [mode, result?.spokenResponse, speak, speechRate]);
+  }, [autoSpeak, mode, result?.spokenResponse, speak, speechRate]);
+
+  useEffect(() => {
+    if (!resultSpeechDone || (mode !== "describe" && mode !== "read")) return undefined;
+    const version = ++conversationRef.current;
+    let cancelled = false;
+    const run = async () => {
+      let heard = await ask(
+        mode === "read"
+          ? "Would you like me to read something else?"
+          : "Would you like me to describe again?",
+      );
+      if (!heard || cancelled) return;
+      let intent = parseVoiceIntent(heard, { expectsConfirmation: true });
+      if (intent.type === "repeat") {
+        await voiceSpeakAndWait(result.spokenResponse);
+        heard = await ask("Say Scan Again or Home.");
+        if (!heard || cancelled) return;
+        intent = parseVoiceIntent(heard, { expectsConfirmation: true });
+      }
+      if (intent.type === "yes" || intent.type === "scan_again" || intent.type === mode) {
+        navigate(`/camera/${mode}`);
+        return;
+      }
+      if (intent.type === "home") {
+        navigate("/");
+        return;
+      }
+      if (intent.type === "no") {
+        heard = await ask("Would you like to return Home?");
+        if (!heard || cancelled) return;
+        intent = parseVoiceIntent(heard, { expectsConfirmation: true });
+        if (intent.type === "yes" || intent.type === "home") {
+          navigate("/");
+          return;
+        }
+        await voiceSpeakAndWait("Okay. You can say Repeat, Scan Again, or Home.");
+      } else if (intent.type === "help") {
+        await voiceSpeakAndWait("You can say Repeat, Scan Again, or Home.");
+      } else {
+        await voiceSpeakAndWait("I didn't understand. Say Repeat, Scan Again, or Home.");
+      }
+
+      while (!cancelled) {
+        const command = await ask("");
+        if (!command || cancelled) return;
+        const nextIntent = parseVoiceIntent(command);
+        if (nextIntent.type === "repeat") {
+          await voiceSpeakAndWait(result.spokenResponse);
+        } else if (nextIntent.type === "scan_again" || nextIntent.type === mode) {
+          navigate(`/camera/${mode}`);
+          return;
+        } else if (nextIntent.type === "home") {
+          navigate("/");
+          return;
+        } else if (nextIntent.type === "help") {
+          await voiceSpeakAndWait("You can say Repeat, Scan Again, or Home.");
+        } else {
+          await voiceSpeakAndWait("I didn't understand. Say Repeat, Scan Again, or Home.");
+        }
+      }
+    };
+    run();
+    return () => {
+      cancelled = true;
+      conversationRef.current += 1;
+      cancelConversation();
+    };
+  }, [ask, cancelConversation, mode, navigate, result?.spokenResponse, resultSpeechDone, voiceSpeakAndWait]);
 
   if (!currentResult || !result) {
     return (
