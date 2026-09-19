@@ -11,12 +11,16 @@ import {
   VolumeX,
 } from "lucide-react";
 
-import { useNavigate, useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 
 import CameraView from "../components/camera/CameraView.jsx";
 import DetectionPanel from "../components/camera/DirectionPanel.jsx";
 import ProcessingState from "../components/common/ProcessingState.jsx";
 import WalkAssistStatusPanel from "../components/walk/WalkAssistStatusPanel.jsx";
+import {
+  DesktopHeader,
+  MobileBottomNav,
+} from "../components/layout/NetraNavigation.jsx";
 
 import { useCamera } from "../hooks/camera/useCamera.js";
 
@@ -155,6 +159,7 @@ export default function CameraPage() {
   const { mode } = useParams();
 
   const navigate = useNavigate();
+  const locationRoute = useLocation();
 
   const videoRef = useRef(null);
 
@@ -225,7 +230,9 @@ export default function CameraPage() {
 
   const { trigger, isArmed } = useSpokenAction();
 
-  const { stream, error, isStarting, startCamera, stopCamera } = useCamera({ walkAssist: mode === "assist" });
+  const { stream, error, isStarting, startCamera, stopCamera } = useCamera({
+    walkAssist: mode === "assist",
+  });
 
   const analyzeMutation = useAnalyzeImage();
 
@@ -241,7 +248,11 @@ export default function CameraPage() {
 
   const localDetectionEnabled =
     Boolean(stream) &&
-    (mode === "find" || (mode === "assist" && cameraReady && walkDetectionReady && !walkAssistPaused));
+    (mode === "find" ||
+      (mode === "assist" &&
+        cameraReady &&
+        walkDetectionReady &&
+        !walkAssistPaused));
 
   const { detections, isModelLoading, isDetecting, detectionError } =
     useObjectDetection({
@@ -265,7 +276,8 @@ export default function CameraPage() {
   }, [mode, cameraReady, missingWalkRoute]);
 
   useEffect(() => {
-    if (!walkDetectionReady || isModelLoading || !liveAnnouncementsReady) return undefined;
+    if (!walkDetectionReady || isModelLoading || !liveAnnouncementsReady)
+      return undefined;
     const timer = window.setTimeout(() => setWalkVoiceReady(true), 400);
     return () => window.clearTimeout(timer);
   }, [walkDetectionReady, isModelLoading, liveAnnouncementsReady]);
@@ -290,7 +302,8 @@ export default function CameraPage() {
 
     isTracking,
   } = useGeolocation({
-    enabled: mode === "assist" && cameraReady && isValidMode && !missingWalkRoute,
+    enabled:
+      mode === "assist" && cameraReady && isValidMode && !missingWalkRoute,
   });
 
   const {
@@ -613,16 +626,22 @@ export default function CameraPage() {
   );
 
   useEffect(() => {
-    if (mode !== "assist" || !voiceAssistantActive || !voiceEnabled) return undefined;
+    if (mode !== "assist" || !voiceAssistantActive || !voiceEnabled)
+      return undefined;
     let timer = null;
     const onStop = () => {
       window.clearTimeout(timer);
-      timer = window.setTimeout(() => voiceSpeakAndWait("What can I help you with?"), 150);
+      timer = window.setTimeout(
+        () => voiceSpeakAndWait("What can I help you with?"),
+        150,
+      );
     };
     const onSpeechStart = (event) => {
       walkSpeechRef.current = event.detail?.text || "";
     };
-    const onSpeechEnd = () => { walkSpeechRef.current = ""; };
+    const onSpeechEnd = () => {
+      walkSpeechRef.current = "";
+    };
     window.addEventListener("netra-speech-start", onSpeechStart);
     window.addEventListener("netra-speech-end", onSpeechEnd);
     window.addEventListener("netra-stop-speech", onStop);
@@ -661,10 +680,13 @@ export default function CameraPage() {
           });
           // During guidance, accept only Stop and ignore commands in our own speech.
           const spokenText = `${speechAtStart} ${walkSpeechRef.current}`;
-          if (spokenText.trim() && (
-            intent.type !== "stop_talking" ||
-            /\b(stop|stop talking|be quiet|quiet|shush|that's enough)\b/i.test(spokenText)
-          )) {
+          if (
+            spokenText.trim() &&
+            (intent.type !== "stop_talking" ||
+              /\b(stop|stop talking|be quiet|quiet|shush|that's enough)\b/i.test(
+                spokenText,
+              ))
+          ) {
             await new Promise((resolve) => window.setTimeout(resolve, 400));
             continue;
           }
@@ -727,7 +749,11 @@ export default function CameraPage() {
           await new Promise((resolve) => window.setTimeout(resolve, 400));
         } catch (error) {
           if (cancelled) return;
-          if (/denied|not.allowed|network|microphone|audio-capture/i.test(error?.message || "")) {
+          if (
+            /denied|not.allowed|network|microphone|audio-capture/i.test(
+              error?.message || "",
+            )
+          ) {
             deactivateVoiceAssistant();
             return;
           }
@@ -759,8 +785,8 @@ export default function CameraPage() {
 
   if (!isValidMode) {
     return (
-      <main className="mx-auto flex min-h-screen max-w-xl flex-col justify-center px-5">
-        <h1 className="text-2xl font-semibold text-slate-950">
+      <main className="mx-auto flex min-h-screen max-w-xl flex-col justify-center bg-[#030a12] px-5 text-white">
+        <h1 className="text-2xl font-semibold text-white">
           Invalid camera mode
         </h1>
 
@@ -778,8 +804,8 @@ export default function CameraPage() {
           }
           className={`mt-6 inline-flex min-h-12 w-fit items-center justify-center rounded-xl px-5 font-medium ${
             isArmed("invalid-home")
-              ? "bg-emerald-800 text-white ring-4 ring-emerald-100"
-              : "bg-emerald-700 text-white"
+              ? "bg-blue-700 text-white ring-4 ring-blue-400/20"
+              : "bg-blue-600 text-white"
           }`}
         >
           Return home
@@ -790,12 +816,12 @@ export default function CameraPage() {
 
   if (missingFindQuery) {
     return (
-      <main className="mx-auto flex min-h-screen max-w-xl flex-col justify-center px-5">
-        <h1 className="text-2xl font-semibold text-slate-950">
+      <main className="mx-auto flex min-h-screen max-w-xl flex-col justify-center bg-[#030a12] px-5 text-white">
+        <h1 className="text-2xl font-semibold text-white">
           Choose an object first
         </h1>
 
-        <p className="mt-2 text-slate-600">
+        <p className="mt-2 text-slate-400">
           Tell Netra what you want to find first.
         </p>
 
@@ -813,8 +839,8 @@ export default function CameraPage() {
           }
           className={`mt-6 inline-flex min-h-12 w-fit items-center justify-center rounded-xl px-5 font-medium text-white ${
             isArmed("choose-object")
-              ? "bg-emerald-800 ring-4 ring-emerald-100"
-              : "bg-emerald-700"
+              ? "bg-blue-700 ring-4 ring-blue-400/20"
+              : "bg-blue-600"
           }`}
         >
           Choose object
@@ -825,12 +851,12 @@ export default function CameraPage() {
 
   if (missingWalkRoute) {
     return (
-      <main className="mx-auto flex min-h-screen max-w-xl flex-col justify-center px-5">
-        <h1 className="text-2xl font-semibold text-slate-950">
+      <main className="mx-auto flex min-h-screen max-w-xl flex-col justify-center bg-[#030a12] px-5 text-white">
+        <h1 className="text-2xl font-semibold text-white">
           Choose a destination first
         </h1>
 
-        <p className="mt-2 leading-7 text-slate-600">
+        <p className="mt-2 leading-7 text-slate-400">
           Walk Assist needs a walking route before live guidance can begin.
         </p>
 
@@ -848,8 +874,8 @@ export default function CameraPage() {
           }
           className={`mt-6 inline-flex min-h-12 w-fit items-center justify-center rounded-xl px-5 font-medium text-white ${
             isArmed("choose-destination")
-              ? "bg-emerald-800 ring-4 ring-emerald-100"
-              : "bg-emerald-700"
+              ? "bg-blue-700 ring-4 ring-blue-400/20"
+              : "bg-blue-600"
           }`}
         >
           Choose destination
@@ -865,288 +891,293 @@ export default function CameraPage() {
   const isSpeaking = isEntrySpeaking || isDetectionSpeaking || isWalkSpeaking;
 
   return (
-    <main className="mx-auto min-h-screen w-full max-w-6xl px-4 py-5 sm:px-6">
-      <header className="flex items-center justify-between gap-4">
-        <button
-          type="button"
-          onClick={() =>
-            trigger({
-              id: "camera-back",
+    <main className="min-h-screen bg-[#030a12] pb-24 text-white md:pb-0">
+      <DesktopHeader compact />
 
-              announcement:
-                mode === "assist"
-                  ? "Back button clicked. Press again to end this walk and return to destination setup."
-                  : "Back button clicked. Press again to return home.",
+      <div className="mx-auto w-full max-w-[1500px] px-3 py-3 sm:px-5 md:px-6 md:py-6 lg:px-8">
+        <header className="mb-3 flex min-h-14 items-center justify-between rounded-2xl border border-white/10 bg-[#07111c] px-3 md:mb-5 md:px-5">
+          <button
+            type="button"
+            onClick={() =>
+              trigger({
+                id: "camera-back",
+                announcement:
+                  mode === "assist"
+                    ? "Back button clicked. Press again to end this walk and return to destination setup."
+                    : "Back button clicked. Press again to return home.",
+                action: handleBack,
+              })
+            }
+            className={`inline-flex min-h-11 items-center gap-2 rounded-xl px-3 text-sm font-medium transition ${
+              isArmed("camera-back")
+                ? "bg-blue-500/20 text-blue-300 ring-2 ring-blue-400/30"
+                : "text-slate-300 hover:bg-[#07111c]/5 hover:text-white"
+            }`}
+          >
+            <ArrowLeft size={20} />
+            <span className="hidden sm:inline">Back</span>
+          </button>
 
-              action: handleBack,
-            })
-          }
-          className={`inline-flex min-h-11 items-center gap-2 rounded-xl px-3 text-sm font-medium transition ${
-            isArmed("camera-back")
-              ? "bg-emerald-50 text-emerald-800 ring-2 ring-emerald-200"
-              : "text-slate-700 hover:bg-slate-100"
-          }`}
-        >
-          <ArrowLeft size={20} />
-          Back
-        </button>
-
-        <div className="flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-700">
-          <ModeIcon size={15} />
-
-          {content.title}
-        </div>
-      </header>
-
-      <section className="mt-7">
-        <h1 className="text-3xl font-semibold tracking-tight text-slate-950 sm:text-4xl">
-          {content.title}
-        </h1>
-
-        <p className="mt-2 max-w-2xl leading-7 text-slate-600">
-          {content.description}
-        </p>
-
-        {mode === "find" && (
-          <div className="mt-4 inline-flex rounded-full bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-800">
-            Looking for: {findQuery}
+          <div className="flex items-center gap-2 text-sm font-semibold text-white">
+            <ModeIcon size={18} className="text-blue-400" />
+            <span>
+              {mode === "describe"
+                ? "Describe"
+                : mode === "read"
+                  ? "Read Text"
+                  : content.title}
+            </span>
           </div>
-        )}
 
-        {mode === "assist" && walkDestination && (
-          <div className="mt-4 inline-flex rounded-full bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-800">
-            Destination: {walkDestination.label || walkDestination.name}
-          </div>
-        )}
-      </section>
+          <div className="w-11" aria-hidden="true" />
+        </header>
 
-      <section className="mt-7 grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
-        <div>
-          <CameraView
-            videoRef={videoRef}
-            stream={stream}
-            error={error}
-            isStarting={isStarting}
-          />
+        <section className="grid gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(300px,1fr)] lg:gap-5">
+          <div className="min-w-0">
+            <div className="relative">
+              <CameraView
+                videoRef={videoRef}
+                stream={stream}
+                error={error}
+                isStarting={isStarting}
+                placeholderSrc={
+                  mode === "read"
+                    ? "/netra_WPA/04_read_text_scene.webp"
+                    : "/netra_WPA/03_describe_scene.webp"
+                }
+              />
 
-          {mode === "describe" && (
-            <div className="mt-5">
-              {analyzeMutation.isPending ? (
-                <ProcessingState message="Understanding your surroundings..." />
-              ) : (
-                <button
-                  type="button"
-                  disabled={!stream || isStarting}
-                  onClick={() =>
-                    trigger({
-                      id: "describe-scene",
-
-                      announcement:
-                        "Describe scene button clicked. Press again to analyze the scene.",
-
-                      action: handleDescribe,
-                    })
-                  }
-                  className={`inline-flex min-h-16 w-full items-center justify-center gap-3 rounded-2xl px-6 py-4 text-lg font-semibold text-white transition disabled:cursor-not-allowed disabled:opacity-50 ${
-                    isArmed("describe-scene")
-                      ? "bg-emerald-800 ring-4 ring-emerald-100"
-                      : "bg-emerald-700 hover:bg-emerald-800"
-                  }`}
-                >
-                  <Sparkles size={23} />
-                  Describe scene
-                </button>
+              {(mode === "describe" || mode === "read") && (
+                <div className="pointer-events-none absolute left-1/2 top-5 z-10 -translate-x-1/2 whitespace-nowrap rounded-full border border-white/10 bg-black/55 px-4 py-2 text-xs font-medium text-white backdrop-blur-md sm:text-sm">
+                  {mode === "describe"
+                    ? "Point your camera at something"
+                    : "Point your camera at visible text"}
+                </div>
               )}
 
-              {analysisError && (
-                <div
-                  className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm leading-6 text-red-700"
-                  role="alert"
-                >
-                  {analysisError}
+              {mode === "find" && (
+                <div className="pointer-events-none absolute left-1/2 top-5 z-10 -translate-x-1/2 rounded-full border border-white/10 bg-black/55 px-4 py-2 text-xs font-medium text-white backdrop-blur-md">
+                  Looking for: {findQuery}
+                </div>
+              )}
+
+              {mode === "assist" && walkDestination && (
+                <div className="pointer-events-none absolute left-4 right-4 top-5 z-10 rounded-2xl border border-white/10 bg-black/55 px-4 py-3 text-sm text-white backdrop-blur-md">
+                  <span className="text-slate-300">Walking to </span>
+                  <span className="font-semibold">
+                    {walkDestination.label || walkDestination.name}
+                  </span>
                 </div>
               )}
             </div>
-          )}
 
-          {mode === "read" && (
-            <div className="mt-5">
-              {analyzeMutation.isPending ? (
-                <ProcessingState message="Reading visible text..." />
-              ) : (
-                <button
-                  type="button"
-                  disabled={!stream || isStarting}
-                  onClick={() =>
-                    trigger({
-                      id: "read-text",
+            {analysisError && (mode === "describe" || mode === "read") && (
+              <div
+                className="mt-4 rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-sm leading-6 text-red-200"
+                role="alert"
+              >
+                {analysisError}
+              </div>
+            )}
 
-                      announcement:
-                        "Read text button clicked. Press again to capture and read the visible text.",
-
-                      action: handleRead,
-                    })
-                  }
-                  className={`inline-flex min-h-16 w-full items-center justify-center gap-3 rounded-2xl px-6 py-4 text-lg font-semibold text-white transition disabled:cursor-not-allowed disabled:opacity-50 ${
-                    isArmed("read-text")
-                      ? "bg-emerald-800 ring-4 ring-emerald-100"
-                      : "bg-emerald-700 hover:bg-emerald-800"
-                  }`}
-                >
-                  <FileText size={23} />
-                  Read text
-                </button>
-              )}
-
-              {analysisError && (
-                <div
-                  className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm leading-6 text-red-700"
-                  role="alert"
-                >
-                  {analysisError}
+            {mode === "assist" && (
+              <div className="mt-4 rounded-2xl border border-white/10 bg-[#07111c]/[0.035] p-4 lg:hidden">
+                <div className="flex items-center gap-2">
+                  {autoSpeak ? (
+                    <Volume2 size={19} className="text-blue-400" />
+                  ) : (
+                    <VolumeX size={19} className="text-slate-500" />
+                  )}
+                  <p className="text-sm font-medium text-slate-200">
+                    {walkAssistPaused
+                      ? "Walk Assist paused"
+                      : autoSpeak
+                        ? "Audio guidance active"
+                        : "Automatic speech is disabled in Settings"}
+                  </p>
                 </div>
-              )}
-            </div>
-          )}
-
-          {mode === "assist" && (
-            <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
-              <div className="flex items-center gap-2">
-                {autoSpeak ? (
-                  <Volume2 size={19} className="text-emerald-700" />
-                ) : (
-                  <VolumeX size={19} className="text-slate-500" />
-                )}
-
-                <p className="text-sm font-medium text-slate-800">
-                  {walkAssistPaused
-                    ? "Walk Assist paused"
-                    : autoSpeak
-                      ? "Audio guidance active"
-                      : "Automatic speech is disabled in Settings"}
-                </p>
               </div>
-            </div>
-          )}
-        </div>
-
-        {mode === "describe" && (
-          <aside className="rounded-2xl border border-slate-200 bg-white p-5">
-            <Eye size={22} className="text-emerald-700" />
-
-            <h2 className="mt-4 font-semibold text-slate-950">Describe mode</h2>
-
-            <p className="mt-2 text-sm leading-6 text-slate-600">
-              Point the camera at the scene you want Netra to understand.
-            </p>
-
-            <p className="mt-4 text-sm leading-6 text-slate-500">
-              Press Describe scene once to hear the button. Press it again to
-              analyze.
-            </p>
-          </aside>
-        )}
-
-        {mode === "read" && (
-          <aside className="rounded-2xl border border-slate-200 bg-white p-5">
-            <FileText size={22} className="text-emerald-700" />
-
-            <h2 className="mt-4 font-semibold text-slate-950">Read mode</h2>
-
-            <p className="mt-2 text-sm leading-6 text-slate-600">
-              Point the camera directly at the text. Keep the phone steady and
-              try to fill the frame with the sign, label, menu, or document.
-            </p>
-
-            <p className="mt-4 text-sm leading-6 text-slate-500">
-              Press Read text once to hear the button. Press it again to capture
-              one frame and read the visible text.
-            </p>
-          </aside>
-        )}
-
-        {mode === "find" && (
-          <div className="space-y-4">
-            <DetectionPanel
-              detections={visibleDetections}
-              isModelLoading={isModelLoading}
-              isDetecting={isDetecting}
-              error={detectionError}
-            />
-
-            <section className="rounded-2xl border border-slate-200 bg-white p-5">
-              <div className="flex items-center gap-2">
-                {autoSpeak ? (
-                  <Volume2 size={20} className="text-emerald-700" />
-                ) : (
-                  <VolumeX size={20} className="text-slate-500" />
-                )}
-
-                <h2 className="font-semibold text-slate-950">Voice feedback</h2>
-              </div>
-
-              <p className="mt-3 text-sm leading-6 text-slate-600">
-                {!liveAnnouncementsReady
-                  ? "Starting voice guidance..."
-                  : isSpeaking
-                    ? "Netra is speaking."
-                    : "Netra is monitoring your surroundings."}
-              </p>
-            </section>
+            )}
           </div>
-        )}
 
-        {mode === "assist" && (
-          <WalkAssistStatusPanel
-            destination={walkDestination}
-            currentDirection={getSafeRouteInstruction(currentStep)}
-            distanceToStep={distanceToStep}
-            lastCue={walkLastCue}
-            location={location}
-            locationError={locationError}
-            isTracking={isTracking}
-            isModelLoading={isModelLoading}
-            detectionError={detectionError}
-            detections={detections}
-            isSpeaking={isSpeaking}
-            paused={walkAssistPaused}
-            onRepeatDirection={() =>
-              trigger({
-                id: "repeat-direction",
+          <aside className="min-w-0">
+            {mode === "describe" && (
+              <div className="rounded-3xl border border-white/10 bg-[#07111c] p-5 sm:p-6">
+                <div className="flex items-start gap-4">
+                  <span className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-blue-500/15">
+                    <img
+                      src="/netra_WPA/07_describe_icon.png"
+                      alt=""
+                      className="h-11 w-11 object-contain"
+                    />
+                  </span>
+                  <div>
+                    <h1 className="text-xl font-semibold">Describe</h1>
+                    <p className="mt-2 text-sm leading-6 text-slate-400">
+                      Get a clear, detailed description of objects, people,
+                      places and more around you.
+                    </p>
+                  </div>
+                </div>
+                <div className="mt-6">
+                  {analyzeMutation.isPending ? (
+                    <ProcessingState message="Understanding your surroundings..." />
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={!stream || isStarting}
+                      onClick={() =>
+                        trigger({
+                          id: "describe-scene",
+                          announcement:
+                            "Describe scene button clicked. Press again to analyze the scene.",
+                          action: handleDescribe,
+                        })
+                      }
+                      className={`inline-flex min-h-14 w-full items-center justify-center gap-3 rounded-2xl bg-blue-600 px-5 font-semibold text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50 ${isArmed("describe-scene") ? "ring-4 ring-blue-400/30" : ""}`}
+                    >
+                      <Sparkles size={21} />
+                      Describe
+                    </button>
+                  )}
+                </div>
+                <div className="mt-5 border-t border-white/10 pt-5">
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                    Tips
+                  </p>
+                  <ul className="mt-3 space-y-2 text-sm leading-6 text-slate-400">
+                    <li>Point your camera at the scene.</li>
+                    <li>Keep the phone steady.</li>
+                    <li>Good lighting gives clearer results.</li>
+                  </ul>
+                </div>
+              </div>
+            )}
 
-                announcement:
-                  "Repeat direction button clicked. Press again to hear the current route direction.",
+            {mode === "read" && (
+              <div className="rounded-3xl border border-white/10 bg-[#07111c] p-5 sm:p-6">
+                <div className="flex items-start gap-4">
+                  <span className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-blue-500/15">
+                    <img
+                      src="/netra_WPA/09_read_text_icon.png"
+                      alt=""
+                      className="h-11 w-11 object-contain"
+                    />
+                  </span>
+                  <div>
+                    <h1 className="text-xl font-semibold">Read Text</h1>
+                    <p className="mt-2 text-sm leading-6 text-slate-400">
+                      Scan and listen to visible text aloud. Supports documents,
+                      signs, labels and more.
+                    </p>
+                  </div>
+                </div>
+                <div className="mt-6">
+                  {analyzeMutation.isPending ? (
+                    <ProcessingState message="Reading visible text..." />
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={!stream || isStarting}
+                      onClick={() =>
+                        trigger({
+                          id: "read-text",
+                          announcement:
+                            "Read text button clicked. Press again to capture and read the visible text.",
+                          action: handleRead,
+                        })
+                      }
+                      className={`inline-flex min-h-14 w-full items-center justify-center gap-3 rounded-2xl bg-blue-600 px-5 font-semibold text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50 ${isArmed("read-text") ? "ring-4 ring-blue-400/30" : ""}`}
+                    >
+                      <Volume2 size={21} />
+                      Read Aloud
+                    </button>
+                  )}
+                </div>
+                <div className="mt-5 border-t border-white/10 pt-5 text-sm leading-6 text-slate-400">
+                  Keep the text centered, steady and well lit for the clearest
+                  reading.
+                </div>
+              </div>
+            )}
 
-                action: handleRepeatDirection,
-              })
-            }
-            repeatSelected={isArmed("repeat-direction")}
-            onPauseToggle={() =>
-              trigger({
-                id: "pause-walk-assist",
+            {mode === "find" && (
+              <div className="space-y-4">
+                <DetectionPanel
+                  detections={visibleDetections}
+                  isModelLoading={isModelLoading}
+                  isDetecting={isDetecting}
+                  error={detectionError}
+                />
+                <section className="rounded-3xl border border-white/10 bg-[#07111c] p-5">
+                  <div className="flex items-center gap-2">
+                    {autoSpeak ? (
+                      <Volume2 size={20} className="text-blue-400" />
+                    ) : (
+                      <VolumeX size={20} className="text-slate-500" />
+                    )}
+                    <h2 className="font-semibold">Voice feedback</h2>
+                  </div>
+                  <p className="mt-3 text-sm leading-6 text-slate-400">
+                    {!liveAnnouncementsReady
+                      ? "Starting voice guidance..."
+                      : isSpeaking
+                        ? "Netra is speaking."
+                        : "Netra is monitoring your surroundings."}
+                  </p>
+                </section>
+              </div>
+            )}
 
-                announcement: walkAssistPaused
-                  ? "Resume Walk Assist button clicked. Press again to resume."
-                  : "Pause Walk Assist button clicked. Press again to pause.",
+            {mode === "assist" && (
+              <WalkAssistStatusPanel
+                destination={walkDestination}
+                currentDirection={getSafeRouteInstruction(currentStep)}
+                distanceToStep={distanceToStep}
+                lastCue={walkLastCue}
+                location={location}
+                locationError={locationError}
+                isTracking={isTracking}
+                isModelLoading={isModelLoading}
+                detectionError={detectionError}
+                detections={detections}
+                isSpeaking={isSpeaking}
+                paused={walkAssistPaused}
+                onRepeatDirection={() =>
+                  trigger({
+                    id: "repeat-direction",
+                    announcement:
+                      "Repeat direction button clicked. Press again to hear the current route direction.",
+                    action: handleRepeatDirection,
+                  })
+                }
+                repeatSelected={isArmed("repeat-direction")}
+                onPauseToggle={() =>
+                  trigger({
+                    id: "pause-walk-assist",
+                    announcement: walkAssistPaused
+                      ? "Resume Walk Assist button clicked. Press again to resume."
+                      : "Pause Walk Assist button clicked. Press again to pause.",
+                    action: handlePauseToggle,
+                  })
+                }
+                pauseSelected={isArmed("pause-walk-assist")}
+                onEndWalk={() =>
+                  trigger({
+                    id: "end-walk-assist",
+                    announcement:
+                      "End Walk Assist button clicked. Press again to end navigation and return home.",
+                    action: handleEndWalk,
+                  })
+                }
+                endSelected={isArmed("end-walk-assist")}
+              />
+            )}
+          </aside>
+        </section>
+      </div>
 
-                action: handlePauseToggle,
-              })
-            }
-            pauseSelected={isArmed("pause-walk-assist")}
-            onEndWalk={() =>
-              trigger({
-                id: "end-walk-assist",
-
-                announcement:
-                  "End Walk Assist button clicked. Press again to end navigation and return home.",
-
-                action: handleEndWalk,
-              })
-            }
-            endSelected={isArmed("end-walk-assist")}
-          />
-        )}
-      </section>
+      <MobileBottomNav pathname={locationRoute.pathname} />
     </main>
   );
 }

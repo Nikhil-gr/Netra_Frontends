@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowLeft, Camera, Volume2 } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 
 import DescribeResult from "../components/results/DescribeResult.jsx";
 
@@ -11,6 +11,7 @@ import ReadResult from "../components/results/ReadResults.jsx";
 import { useNetraVoice } from "../voice/useNetraVoice.js";
 import { parseVoiceIntent } from "../voice/voiceIntents.js";
 import { openWalkAssist } from "../voice/openWalkAssist.js";
+import { MobileBottomNav } from "../components/layout/NetraNavigation.jsx";
 
 const RESULT_COPY = {
   describe: {
@@ -36,18 +37,28 @@ const RESULT_COPY = {
 
 export default function ResultPage() {
   const navigate = useNavigate();
+  const locationRoute = useLocation();
 
   const hasSpokenRef = useRef(false);
   const conversationRef = useRef(0);
   const speechInterruptedRef = useRef(false);
   const [resultSpeechDone, setResultSpeechDone] = useState(false);
-  const { ask, speakAndWait: voiceSpeakAndWait, cancelConversation, voiceAssistantActive, voiceEnabled, deactivateVoiceAssistant } = useNetraVoice();
+  const {
+    ask,
+    speakAndWait: voiceSpeakAndWait,
+    cancelConversation,
+    voiceAssistantActive,
+    voiceEnabled,
+    deactivateVoiceAssistant,
+  } = useNetraVoice();
 
   const currentResult = useNetraStore((state) => state.currentResult);
 
   const speechRate = useNetraStore((state) => state.speechRate);
   const autoSpeak = useNetraStore((state) => state.autoSpeak);
-  const setWalkInitialLocation = useNetraStore((state) => state.setWalkInitialLocation);
+  const setWalkInitialLocation = useNetraStore(
+    (state) => state.setWalkInitialLocation,
+  );
 
   const { speak, isSpeaking } = useSpeechSynthesis();
 
@@ -105,29 +116,47 @@ export default function ResultPage() {
   }, [autoSpeak, mode, result?.spokenResponse, speak, speechRate]);
 
   useEffect(() => {
-    if (!voiceAssistantActive || !voiceEnabled || !resultSpeechDone || (mode !== "describe" && mode !== "read")) return undefined;
+    if (
+      !voiceAssistantActive ||
+      !voiceEnabled ||
+      !resultSpeechDone ||
+      (mode !== "describe" && mode !== "read")
+    )
+      return undefined;
     const version = ++conversationRef.current;
     let cancelled = false;
     const run = async () => {
       let prompt = speechInterruptedRef.current
         ? "What can I help you with?"
-        : mode === "read" ? "Would you like me to read something else?" : "Would you like me to describe again?";
+        : mode === "read"
+          ? "Would you like me to read something else?"
+          : "Would you like me to describe again?";
       let confirmingHome = false;
       while (!cancelled) {
         const command = await ask(prompt);
         prompt = "";
         if (!command || cancelled) return;
-        const nextIntent = parseVoiceIntent(command, { expectsConfirmation: true });
+        const nextIntent = parseVoiceIntent(command, {
+          expectsConfirmation: true,
+        });
         if (nextIntent.type === "stop_voice") {
           deactivateVoiceAssistant();
           return;
-        } else if (nextIntent.type === "repeat" || nextIntent.type === "resume") {
+        } else if (
+          nextIntent.type === "repeat" ||
+          nextIntent.type === "resume"
+        ) {
           await voiceSpeakAndWait(result.spokenResponse);
           prompt = "What can I help you with?";
         } else if (nextIntent.type === "yes" && confirmingHome) {
           navigate("/");
           return;
-        } else if (nextIntent.type === "yes" || nextIntent.type === "scan_again" || nextIntent.type === mode || nextIntent.type === "back") {
+        } else if (
+          nextIntent.type === "yes" ||
+          nextIntent.type === "scan_again" ||
+          nextIntent.type === mode ||
+          nextIntent.type === "back"
+        ) {
           navigate(`/camera/${mode}`);
           return;
         } else if (nextIntent.type === "describe") {
@@ -143,7 +172,9 @@ export default function ResultPage() {
           navigate("/");
           return;
         } else if (nextIntent.type === "help") {
-          await voiceSpeakAndWait("Say Repeat to hear the result again, Scan Again, Describe, Read Text, Walk Assist, Back, Home, Stop, Continue, or Guide.");
+          await voiceSpeakAndWait(
+            "Say Repeat to hear the result again, Scan Again, Describe, Read Text, Walk Assist, Back, Home, Stop, Continue, or Guide.",
+          );
           prompt = "What can I help you with?";
         } else if (nextIntent.type === "no") {
           confirmingHome = true;
@@ -159,16 +190,28 @@ export default function ResultPage() {
       conversationRef.current += 1;
       cancelConversation();
     };
-  }, [ask, cancelConversation, deactivateVoiceAssistant, mode, navigate, result?.spokenResponse, resultSpeechDone, setWalkInitialLocation, voiceAssistantActive, voiceEnabled, voiceSpeakAndWait]);
+  }, [
+    ask,
+    cancelConversation,
+    deactivateVoiceAssistant,
+    mode,
+    navigate,
+    result?.spokenResponse,
+    resultSpeechDone,
+    setWalkInitialLocation,
+    voiceAssistantActive,
+    voiceEnabled,
+    voiceSpeakAndWait,
+  ]);
 
   if (!currentResult || !result) {
     return (
-      <main className="mx-auto flex min-h-screen w-full max-w-xl flex-col justify-center px-5 py-8">
-        <h1 className="text-2xl font-semibold text-slate-950">
+      <main className="mx-auto flex min-h-screen w-full max-w-xl flex-col justify-center bg-[#030a12] px-5 py-8 text-white">
+        <h1 className="text-2xl font-semibold text-white">
           No result available
         </h1>
 
-        <p className="mt-2 leading-7 text-slate-600">
+        <p className="mt-2 leading-7 text-slate-400">
           Analyze something first.
         </p>
 
@@ -186,8 +229,8 @@ export default function ResultPage() {
           }
           className={`mt-6 inline-flex min-h-12 w-fit items-center justify-center rounded-xl px-5 font-medium text-white ${
             isArmed("empty-result-home")
-              ? "bg-emerald-800 ring-4 ring-emerald-100"
-              : "bg-emerald-700"
+              ? "bg-blue-700 ring-4 ring-blue-400/20"
+              : "bg-blue-600"
           }`}
         >
           Return home
@@ -223,7 +266,7 @@ export default function ResultPage() {
   };
 
   return (
-    <main className="mx-auto min-h-screen w-full max-w-3xl px-4 py-6 sm:px-6">
+    <main className="mx-auto min-h-screen w-full max-w-3xl bg-[#030a12] px-4 py-6 pb-24 text-white sm:px-6">
       <button
         type="button"
         onClick={() =>
@@ -237,8 +280,8 @@ export default function ResultPage() {
         }
         className={`inline-flex min-h-11 items-center gap-2 rounded-xl px-3 text-sm font-medium transition ${
           isArmed("result-home")
-            ? "bg-emerald-50 text-emerald-800 ring-2 ring-emerald-200"
-            : "text-slate-700 hover:bg-slate-100"
+            ? "bg-blue-500/10 text-blue-300 ring-2 ring-blue-400/20"
+            : "text-slate-300 hover:bg-white/[0.06]"
         }`}
       >
         <ArrowLeft size={20} />
@@ -246,14 +289,14 @@ export default function ResultPage() {
       </button>
 
       <section className="mt-7">
-        <p className="text-sm font-medium text-emerald-700">{copy.eyebrow}</p>
+        <p className="text-sm font-medium text-blue-400">{copy.eyebrow}</p>
 
-        <h1 className="mt-1 text-3xl font-semibold tracking-tight text-slate-950">
+        <h1 className="mt-1 text-3xl font-semibold tracking-tight text-white">
           {copy.title}
         </h1>
 
         <p
-          className="mt-4 text-xl leading-8 text-slate-800"
+          className="mt-4 text-xl leading-8 text-slate-200"
           role="status"
           aria-live="polite"
         >
@@ -262,7 +305,7 @@ export default function ResultPage() {
 
         {isSpeaking && (
           <div
-            className="mt-4 inline-flex items-center gap-2 rounded-full bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-700"
+            className="mt-4 inline-flex items-center gap-2 rounded-full bg-blue-500/10 px-4 py-2 text-sm font-medium text-blue-400"
             role="status"
           >
             <Volume2 size={17} />
@@ -292,8 +335,8 @@ export default function ResultPage() {
           }
           className={`inline-flex min-h-14 items-center justify-center gap-2 rounded-2xl border px-6 py-4 font-semibold transition ${
             isArmed("listen-again")
-              ? "border-emerald-500 bg-emerald-50 text-emerald-800 ring-4 ring-emerald-100"
-              : "border-slate-300 bg-white text-slate-900 hover:bg-slate-50"
+              ? "border-blue-500 bg-blue-500/10 text-blue-300 ring-4 ring-blue-400/20"
+              : "border-white/15 bg-[#07111c] text-slate-100 hover:bg-white/[0.04]"
           }`}
         >
           <Volume2 size={21} />
@@ -316,14 +359,15 @@ export default function ResultPage() {
           }
           className={`inline-flex min-h-14 items-center justify-center gap-2 rounded-2xl px-6 py-4 font-semibold text-white transition ${
             isArmed("scan-again")
-              ? "bg-emerald-800 ring-4 ring-emerald-100"
-              : "bg-emerald-700 hover:bg-emerald-800"
+              ? "bg-blue-700 ring-4 ring-blue-400/20"
+              : "bg-blue-600 hover:bg-blue-700"
           }`}
         >
           <Camera size={21} />
           Scan again
         </button>
       </div>
+      <MobileBottomNav pathname={locationRoute.pathname} />
     </main>
   );
 }

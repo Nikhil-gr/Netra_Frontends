@@ -10,7 +10,7 @@ import {
   Volume2,
 } from "lucide-react";
 
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 
 import {
   getWalkingRoute,
@@ -22,6 +22,10 @@ import { useSpokenAction } from "../hooks/accessibilty/useSpokenAction.js";
 import { useNetraStore } from "../store/useNetraStore.js";
 import { useNetraVoice } from "../voice/useNetraVoice.js";
 import { parseVoiceIntent } from "../voice/voiceIntents.js";
+import {
+  DesktopHeader,
+  MobileBottomNav,
+} from "../components/layout/NetraNavigation.jsx";
 
 import { sortDestinationsByDistance } from "../utils/navigation/distance.js";
 
@@ -48,6 +52,7 @@ const getDestinationKey = (destination, index) =>
 
 export default function WalkAssistPage() {
   const navigate = useNavigate();
+  const locationRoute = useLocation();
 
   const [query, setQuery] = useState("");
   const [results, setResults] = useState([]);
@@ -103,9 +108,10 @@ export default function WalkAssistPage() {
 
   const getRouteLocation = useCallback(async () => {
     const cached = [cachedLocationRef.current, walkInitialLocation].find(
-      (position) => position && Date.now() - Number(position.timestamp || 0) < 120000,
+      (position) =>
+        position && Date.now() - Number(position.timestamp || 0) < 120000,
     );
-    const position = cached || await getCurrentPosition();
+    const position = cached || (await getCurrentPosition());
     cachedLocationRef.current = position;
     return position;
   }, [getCurrentPosition, walkInitialLocation]);
@@ -247,7 +253,9 @@ export default function WalkAssistPage() {
           }
 
           if (intent === "help") {
-            await speakAndWait("Tell me a destination. I search nearby matches and ask you to confirm. Say Back or Home to return, Stop to interrupt speech, Continue to resume, or Guide for help.");
+            await speakAndWait(
+              "Tell me a destination. I search nearby matches and ask you to confirm. Say Back or Home to return, Stop to interrupt speech, Continue to resume, or Guide for help.",
+            );
             attempt -= 1;
             continue;
           }
@@ -370,7 +378,9 @@ export default function WalkAssistPage() {
           return;
         }
         if (command.type === "help") {
-          await speakAndWait("Tell me a destination. I search nearby matches and ask you to confirm. Say Back or Home to return, Stop to interrupt speech, Continue to resume, or Guide for help.");
+          await speakAndWait(
+            "Tell me a destination. I search nearby matches and ask you to confirm. Say Back or Home to return, Stop to interrupt speech, Continue to resume, or Guide for help.",
+          );
           continue;
         }
         spokenDestination = answer.trim();
@@ -648,7 +658,9 @@ export default function WalkAssistPage() {
   };
 
   return (
-    <main className="mx-auto min-h-screen w-full max-w-3xl px-4 py-6 sm:px-6">
+    <main className="min-h-screen bg-[#030a12] pb-24 text-white md:pb-0">
+      <DesktopHeader compact />
+      <div className="mx-auto w-full max-w-3xl px-4 py-6 sm:px-6 md:py-10">
       <button
         type="button"
         onClick={() =>
@@ -660,8 +672,8 @@ export default function WalkAssistPage() {
         }
         className={`inline-flex min-h-11 items-center gap-2 rounded-xl px-3 text-sm font-medium transition ${
           isArmed("walk-back")
-            ? "bg-emerald-50 text-emerald-800 ring-2 ring-emerald-200"
-            : "text-slate-700 hover:bg-slate-100"
+            ? "bg-blue-500/10 text-blue-300 ring-2 ring-blue-400/20"
+            : "text-slate-300 hover:bg-white/5"
         }`}
       >
         <ArrowLeft size={20} />
@@ -669,15 +681,15 @@ export default function WalkAssistPage() {
       </button>
 
       <section className="mt-10">
-        <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-700">
+        <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-500/10 text-blue-400">
           <Navigation size={28} />
         </div>
 
-        <h1 className="mt-5 text-3xl font-semibold tracking-tight text-slate-950 sm:text-4xl">
+        <h1 className="mt-5 text-3xl font-semibold tracking-tight text-white sm:text-4xl">
           Walk Assist
         </h1>
 
-        <p className="mt-3 max-w-2xl leading-7 text-slate-600">
+        <p className="mt-3 max-w-2xl leading-7 text-slate-400">
           Netra asks where you want to go, listens automatically, suggests the
           closest matching destination, then starts walking guidance after you
           confirm.
@@ -685,25 +697,25 @@ export default function WalkAssistPage() {
       </section>
 
       <section
-        className="mt-8 rounded-3xl border border-slate-200 bg-white p-5 sm:p-6"
+        className="mt-8 rounded-3xl border border-white/10 bg-[#07111c] p-5 sm:p-6"
         aria-live="polite"
       >
         <div className="flex items-start gap-3">
-          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-700">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-blue-500/10 text-blue-400">
             {isListening ? <Mic size={21} /> : <Volume2 size={21} />}
           </div>
 
           <div className="min-w-0">
-            <p className="text-sm font-medium text-emerald-700">
+            <p className="text-sm font-medium text-blue-400">
               Voice conversation
             </p>
 
-            <p className="mt-1 text-lg font-semibold leading-7 text-slate-950">
+            <p className="mt-1 text-lg font-semibold leading-7 text-white">
               {status}
             </p>
 
             {isListening && (
-              <p className="mt-2 text-sm font-medium text-emerald-700">
+              <p className="mt-2 text-sm font-medium text-blue-400">
                 Microphone is listening now.
               </p>
             )}
@@ -711,14 +723,14 @@ export default function WalkAssistPage() {
         </div>
 
         {recognitionError && !errorMessage && (
-          <p className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-800">
+          <p className="mt-4 rounded-2xl border border-amber-400/30 bg-amber-500/10 p-4 text-sm leading-6 text-amber-200">
             {recognitionError}
           </p>
         )}
 
         {errorMessage && (
           <p
-            className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm leading-6 text-red-700"
+            className="mt-4 rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-sm leading-6 text-red-200"
             role="alert"
           >
             {errorMessage}
@@ -727,19 +739,17 @@ export default function WalkAssistPage() {
       </section>
 
       {query && (
-        <section className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+        <section className="mt-5 rounded-2xl border border-white/10 bg-[#07111c]/[0.025] p-4">
           <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
             Destination heard
           </p>
-          <p className="mt-1 font-semibold text-slate-950">{query}</p>
+          <p className="mt-1 font-semibold text-white">{query}</p>
         </section>
       )}
 
       {results.length > 0 && (
         <section className="mt-6" aria-label="Nearby destination matches">
-          <h2 className="text-lg font-semibold text-slate-950">
-            Nearby matches
-          </h2>
+          <h2 className="text-lg font-semibold text-white">Nearby matches</h2>
 
           <div className="mt-3 space-y-3">
             {results.slice(0, 5).map((destination, index) => {
@@ -763,23 +773,20 @@ export default function WalkAssistPage() {
                   }
                   className={`flex min-h-16 w-full items-start gap-3 rounded-2xl border p-4 text-left transition disabled:cursor-not-allowed disabled:opacity-50 ${
                     isSuggested || isArmed(actionId)
-                      ? "border-emerald-500 bg-emerald-50 ring-2 ring-emerald-100"
-                      : "border-slate-200 bg-white hover:border-emerald-200"
+                      ? "border-blue-500 bg-blue-500/10 ring-2 ring-blue-400/20"
+                      : "border-white/10 bg-[#07111c] hover:border-blue-400/30"
                   }`}
                 >
-                  <MapPin
-                    size={21}
-                    className="mt-0.5 shrink-0 text-emerald-700"
-                  />
+                  <MapPin size={21} className="mt-0.5 shrink-0 text-blue-400" />
 
                   <span className="min-w-0">
-                    <span className="block font-semibold text-slate-950">
+                    <span className="block font-semibold text-white">
                       {destination.name || destination.label}
                     </span>
 
                     {destination.label &&
                       destination.label !== destination.name && (
-                        <span className="mt-1 block text-sm leading-5 text-slate-600">
+                        <span className="mt-1 block text-sm leading-5 text-slate-400">
                           {destination.label}
                         </span>
                       )}
@@ -799,17 +806,17 @@ export default function WalkAssistPage() {
       )}
 
       {(voiceFallback || !recognitionSupported) && (
-        <section className="mt-6 rounded-3xl border border-slate-200 bg-white p-5 sm:p-6">
-          <h2 className="font-semibold text-slate-950">Type destination</h2>
+        <section className="mt-6 rounded-3xl border border-white/10 bg-[#07111c] p-5 sm:p-6">
+          <h2 className="font-semibold text-white">Type destination</h2>
 
-          <p className="mt-2 text-sm leading-6 text-slate-600">
+          <p className="mt-2 text-sm leading-6 text-slate-400">
             Use this if automatic voice input is unavailable, blocked, or not
             understood.
           </p>
 
           <label
             htmlFor="walk-destination-input"
-            className="mt-5 block text-sm font-medium text-slate-900"
+            className="mt-5 block text-sm font-medium text-slate-200"
           >
             Destination
           </label>
@@ -828,7 +835,7 @@ export default function WalkAssistPage() {
             }}
             placeholder="For example: Himalayan Java"
             autoComplete="off"
-            className="mt-2 min-h-14 w-full rounded-2xl border border-slate-300 px-4 text-base outline-none transition focus:border-emerald-600 focus:ring-4 focus:ring-emerald-100"
+            className="mt-2 min-h-14 w-full rounded-2xl border border-white/15 bg-[#0b1724] px-4 text-base text-white placeholder:text-slate-600 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-400/20"
           />
 
           <button
@@ -844,8 +851,8 @@ export default function WalkAssistPage() {
             }
             className={`mt-4 inline-flex min-h-14 w-full items-center justify-center gap-2 rounded-2xl px-5 font-semibold text-white transition disabled:cursor-not-allowed disabled:opacity-50 ${
               isArmed("typed-destination-search")
-                ? "bg-emerald-800 ring-4 ring-emerald-100"
-                : "bg-emerald-700 hover:bg-emerald-800"
+                ? "bg-blue-700 ring-4 ring-blue-400/20"
+                : "bg-blue-600 hover:bg-blue-700"
             }`}
           >
             {isSearching ? (
@@ -861,13 +868,15 @@ export default function WalkAssistPage() {
 
       {isStartingRoute && (
         <div
-          className="mt-6 flex items-center gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-emerald-900"
+          className="mt-6 flex items-center gap-3 rounded-2xl border border-emerald-200 bg-blue-500/10 p-4 text-emerald-900"
           role="status"
         >
           <LoaderCircle size={20} className="animate-spin" />
           Creating your walking route...
         </div>
       )}
+      </div>
+      <MobileBottomNav pathname={locationRoute.pathname} />
     </main>
   );
 }

@@ -1,10 +1,20 @@
-import { Link } from 'react-router-dom'
+import { Link } from "react-router-dom";
 
 export default function NotFoundPage() {
   return (
-    <main className="mx-auto min-h-screen w-full max-w-xl px-5 py-6">
-      <h1 className="mt-6 text-3xl font-bold text-slate-950">Page not found</h1>
-      <Link className="mt-4 inline-block text-sm font-medium text-emerald-700" to="/">Go home</Link>
+    <main className="flex min-h-screen items-center justify-center bg-[#030a12] px-5 text-white">
+      <div className="max-w-md text-center">
+        <h1 className="text-3xl font-semibold">Page not found</h1>
+        <p className="mt-3 text-slate-400">
+          The page you requested is not available.
+        </p>
+        <Link
+          className="mt-6 inline-flex min-h-12 items-center justify-center rounded-2xl bg-blue-600 px-6 font-semibold text-white hover:bg-blue-500"
+          to="/"
+        >
+          Go home
+        </Link>
+      </div>
     </main>
-  )
+  );
 }
