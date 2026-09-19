@@ -1,33 +1,13 @@
-import { Eye, FileText, ShieldAlert } from "lucide-react";
 import { useCallback, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { useSpokenAction } from "../hooks/accessibilty/useSpokenAction.js";
 import { useNetraStore } from "../store/useNetraStore.js";
 import { useNetraVoice } from "../voice/useNetraVoice.js";
+import { openWalkAssist as enterWalkAssist } from "../voice/openWalkAssist.js";
 
 const ASSET_ROOT = "/netra_assets";
 
-const LOCATION_OPTIONS = {
-  enableHighAccuracy: true,
-  timeout: 15000,
-  maximumAge: 5000,
-};
-
-const normalizePosition = (position) => ({
-  latitude: position.coords.latitude,
-  longitude: position.coords.longitude,
-  accuracy: position.coords.accuracy,
-  heading: Number.isFinite(position.coords.heading)
-    ? position.coords.heading
-    : null,
-  speed: Number.isFinite(position.coords.speed) ? position.coords.speed : null,
-  timestamp: position.timestamp,
-});
-
 export default function HomePage() {
   const navigate = useNavigate();
-
-  const { trigger, isArmed } = useSpokenAction();
 
   const {
     registerActions,
@@ -44,58 +24,8 @@ export default function HomePage() {
   const lastTapRef = useRef(0);
   const activationLockRef = useRef(false);
 
-  const requestMicrophonePermission = () => {
-    if (!navigator.mediaDevices?.getUserMedia) {
-      return Promise.resolve(null);
-    }
-
-    return navigator.mediaDevices
-      .getUserMedia({
-        audio: true,
-      })
-      .then((stream) => {
-        stream.getTracks().forEach((track) => track.stop());
-
-        return true;
-      })
-      .catch(() => null);
-  };
-
-  const requestLocationPermission = () => {
-    if (!navigator.geolocation) {
-      return Promise.resolve(null);
-    }
-
-    if (!window.isSecureContext && window.location.hostname !== "localhost") {
-      return Promise.resolve(null);
-    }
-
-    return new Promise((resolve) => {
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          const location = normalizePosition(position);
-
-          setWalkInitialLocation(location);
-
-          resolve(location);
-        },
-
-        () => resolve(null),
-
-        LOCATION_OPTIONS,
-      );
-    });
-  };
-
   const openWalkAssist = useCallback(async () => {
-    setWalkInitialLocation(null);
-
-    await Promise.allSettled([
-      requestMicrophonePermission(),
-      requestLocationPermission(),
-    ]);
-
-    navigate("/walk-assist");
+    await enterWalkAssist({ navigate, setWalkInitialLocation });
   }, [navigate, setWalkInitialLocation]);
 
   const openDescribe = useCallback(() => {
@@ -167,60 +97,17 @@ export default function HomePage() {
     }
   }, [activateFromGesture, voiceAssistantActive]);
 
-  const modes = [
-    {
-      id: "describe",
-
-      title: "Describe",
-
-      description: "Describes your surroundings",
-
-      icon: Eye,
-
-      announcement: "Describe clicked. Press again to open.",
-
-      action: openDescribe,
-    },
-
-    {
-      id: "read",
-
-      title: "Read Text",
-
-      description: "Reads visible text instantly",
-
-      icon: FileText,
-
-      announcement: "Read text clicked. Press again to open.",
-
-      action: openRead,
-    },
-
-    {
-      id: "assist",
-
-      title: "Walk Assist",
-
-      description: "Assists you while walking",
-
-      icon: ShieldAlert,
-
-      announcement:
-        "Walk assist clicked. Press again to allow microphone and location access and open Walk Assist.",
-
-      action: openWalkAssist,
-    },
-  ];
-
-  const triggerMode = (mode) => {
-    trigger({
-      id: mode.id,
-
-      announcement: mode.announcement,
-
-      action: mode.action,
-    });
-  };
+  const handleKeyDown = useCallback((event) => {
+    if (voiceAssistantActive || !["Enter", " "].includes(event.key)) return;
+    event.preventDefault();
+    const now = Date.now();
+    if (now - lastTapRef.current <= 700) {
+      lastTapRef.current = 0;
+      activateFromGesture();
+    } else {
+      lastTapRef.current = now;
+    }
+  }, [activateFromGesture, voiceAssistantActive]);
 
   return (
     <main
@@ -229,6 +116,9 @@ export default function HomePage() {
       }`}
       onPointerUp={handlePointerUp}
       onDoubleClick={handleDoubleClick}
+      onKeyDown={handleKeyDown}
+      tabIndex={voiceAssistantActive ? undefined : 0}
+      aria-label={voiceAssistantActive ? undefined : "Double tap or press Enter twice to activate Netra voice assistant"}
     >
       <picture className="netra-home__picture" aria-hidden="true">
         <source
@@ -332,63 +222,15 @@ export default function HomePage() {
 
             <span>
               {voiceEnabled
-                ? "Voice assistant active — say Describe, Read Text, or Walk Assist"
-                : "Voice assistant activated — use the controls below"}
+                ? "Voice assistant active — say Describe, Read Text, Walk Assist, or Guide"
+                : "Voice assistant inactive — double tap to activate"}
             </span>
-          </div>
-        )}
-
-        {voiceAssistantActive && (
-          <div
-            className="netra-features netra-features--revealed"
-            aria-label="Netra modes"
-          >
-            {modes.map((mode) => {
-              const Icon = mode.icon;
-
-              return (
-                <button
-                  type="button"
-                  key={mode.id}
-                  onClick={(event) => {
-                    event.stopPropagation();
-
-                    triggerMode(mode);
-                  }}
-                  className={isArmed(mode.id) ? "is-armed" : ""}
-                  aria-label={`${mode.title}. ${mode.description}. ${
-                    isArmed(mode.id)
-                      ? "Press again to open."
-                      : "Press once for confirmation."
-                  }`}
-                >
-                  <span className="netra-feature__icon">
-                    <Icon size={25} />
-                  </span>
-
-                  <span className="netra-feature__title">{mode.title}</span>
-
-                  <span className="netra-feature__description">
-                    {mode.description}
-                  </span>
-
-                  {isArmed(mode.id) && (
-                    <span className="netra-feature__armed">Press again</span>
-                  )}
-                </button>
-              );
-            })}
           </div>
         )}
 
         <p className="netra-signoff">A more independent tomorrow starts here</p>
       </section>
 
-      {!voiceAssistantActive && (
-        <button type="button" className="sr-only" onClick={activateFromGesture}>
-          Activate Netra voice assistant
-        </button>
-      )}
     </main>
   );
 }

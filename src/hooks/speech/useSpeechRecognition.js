@@ -24,6 +24,8 @@ export function useSpeechRecognition({ language = "en-US" } = {}) {
   const recognitionRef = useRef(null);
   const pendingRef = useRef(null);
   const resultReceivedRef = useRef(false);
+  const activeRef = useRef(false);
+  const nextTranscriptRef = useRef("");
 
   const [transcript, setTranscript] = useState("");
   const [isListening, setIsListening] = useState(false);
@@ -70,6 +72,7 @@ export function useSpeechRecognition({ language = "en-US" } = {}) {
     recognition.maxAlternatives = 1;
 
     recognition.onstart = () => {
+      activeRef.current = true;
       resultReceivedRef.current = false;
       setIsListening(true);
       setError(null);
@@ -79,13 +82,8 @@ export function useSpeechRecognition({ language = "en-US" } = {}) {
       const nextTranscript = event.results?.[0]?.[0]?.transcript?.trim() || "";
 
       resultReceivedRef.current = Boolean(nextTranscript);
+      nextTranscriptRef.current = nextTranscript;
       setTranscript(nextTranscript);
-
-      if (pendingRef.current && nextTranscript) {
-        const { resolve } = pendingRef.current;
-        pendingRef.current = null;
-        resolve(nextTranscript);
-      }
     };
 
     recognition.onerror = (event) => {
@@ -102,10 +100,14 @@ export function useSpeechRecognition({ language = "en-US" } = {}) {
     };
 
     recognition.onend = () => {
+      activeRef.current = false;
       setIsListening(false);
 
-      if (pendingRef.current && !resultReceivedRef.current) {
-        rejectPending("I did not hear anything.");
+      if (pendingRef.current) {
+        const pending = pendingRef.current;
+        pendingRef.current = null;
+        if (resultReceivedRef.current) pending.resolve(nextTranscriptRef.current);
+        else pending.reject(new Error("I did not hear anything."));
       }
     };
 
@@ -128,6 +130,7 @@ export function useSpeechRecognition({ language = "en-US" } = {}) {
       }
 
       recognitionRef.current = null;
+      activeRef.current = false;
     };
   }, [RecognitionConstructor, isSupported, language, rejectPending]);
 
@@ -143,7 +146,7 @@ export function useSpeechRecognition({ language = "en-US" } = {}) {
         return;
       }
 
-      if (pendingRef.current) {
+      if (pendingRef.current || activeRef.current) {
         reject(new Error("Voice recognition is already listening."));
         return;
       }
@@ -151,11 +154,14 @@ export function useSpeechRecognition({ language = "en-US" } = {}) {
       setTranscript("");
       setError(null);
       resultReceivedRef.current = false;
+      nextTranscriptRef.current = "";
       pendingRef.current = { resolve, reject };
 
       try {
+        activeRef.current = true;
         recognitionRef.current.start();
       } catch (startError) {
+        activeRef.current = false;
         pendingRef.current = null;
         const message = startError?.message || "Unable to start voice input.";
         setError(message);
@@ -165,7 +171,7 @@ export function useSpeechRecognition({ language = "en-US" } = {}) {
   }, [isSupported, unsupportedReason]);
 
   const startListening = useCallback(() => {
-    if (!isSupported || !recognitionRef.current || isListening) {
+    if (!isSupported || !recognitionRef.current || isListening || activeRef.current) {
       if (!isSupported && unsupportedReason) {
         setError(unsupportedReason);
       }
@@ -177,9 +183,11 @@ export function useSpeechRecognition({ language = "en-US" } = {}) {
     setError(null);
 
     try {
+      activeRef.current = true;
       recognitionRef.current.start();
       return true;
     } catch {
+      activeRef.current = false;
       setError("Unable to start voice input.");
       return false;
     }

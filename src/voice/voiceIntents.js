@@ -14,22 +14,81 @@ const containsWords = (text, phrases) =>
   );
 
 const DIRECT = [
-  ["describe", ["describe", "describe surroundings", "describe my surroundings", "what is around me", "describe now"]],
-  ["read", ["read", "read text", "read this", "read something", "read the text", "read it"]],
-  ["walk", ["walk assist", "walking assist", "guide me", "navigation", "start navigation"]],
+  ["end_walk", ["end walk", "stop navigation"]],
+  [
+    "stop_voice",
+    [
+      "stop listening",
+      "stop voice",
+      "turn off voice",
+      "disable voice assistant",
+    ],
+  ],
+  [
+    "stop_talking",
+    ["stop talking", "be quiet", "quiet", "shush", "that's enough", "stop"],
+  ],
+  [
+    "describe",
+    [
+      "describe",
+      "describe surroundings",
+      "describe my surroundings",
+      "what is around me",
+      "describe now",
+    ],
+  ],
+  [
+    "read",
+    [
+      "read",
+      "read text",
+      "read this",
+      "read something",
+      "read the text",
+      "read it",
+    ],
+  ],
+  [
+    "walk",
+    [
+      "walk",
+      "walk assist",
+      "walk assistant",
+      "walking",
+      "walking assist",
+      "walking assistant",
+      "start walk",
+      "start walking",
+      "navigation",
+      "navigate",
+      "start navigation",
+    ],
+  ],
   ["home", ["home", "go home", "back home", "main menu", "cancel"]],
-  ["help", ["help", "options", "what can you do", "repeat options"]],
+  ["back", ["back", "go back", "previous", "previous screen"]],
+  [
+    "help",
+    [
+      "guide",
+      "help",
+      "show guide",
+      "show me the guide",
+      "what can you do",
+      "how does this work",
+      "what are my options",
+      "options",
+      "repeat options",
+    ],
+  ],
   ["repeat", ["repeat", "listen again", "say that again"]],
   ["scan_again", ["scan again", "describe again", "read again"]],
   ["pause", ["pause", "pause walk assist"]],
   ["resume", ["resume", "continue", "carry on", "go on"]],
   ["repeat_direction", ["repeat direction", "what's next", "where do i go"]],
   ["destination", ["destination", "where am i going"]],
-  ["end_walk", ["end walk", "stop navigation"]],
   ["mute_guidance", ["mute guidance"]],
   ["unmute_guidance", ["unmute guidance"]],
-  ["stop_talking", ["stop", "stop talking", "be quiet", "quiet", "shush"]],
-  ["stop_voice", ["stop listening", "stop voice"]],
   ["history", ["history"]],
   ["settings", ["settings"]],
 ];
@@ -46,11 +105,32 @@ export function parseVoiceIntent(value, { expectsConfirmation = false } = {}) {
   if (expectsConfirmation) {
     if (
       exact(text, [
-        "yes", "yeah", "yep", "sure", "okay", "ok", "correct",
-        "that's right", "that is right", "go ahead", "go there",
+        "yes",
+        "yeah",
+        "yep",
+        "sure",
+        "okay",
+        "ok",
+        "correct",
+        "that's right",
+        "that is right",
+        "go ahead",
+        "go there",
       ])
-    ) return { type: "yes", text };
-    if (exact(text, ["no", "nope", "not that", "not that one", "not now", "next", "another", "another one"])) {
+    )
+      return { type: "yes", text };
+    if (
+      exact(text, [
+        "no",
+        "nope",
+        "not that",
+        "not that one",
+        "not now",
+        "next",
+        "another",
+        "another one",
+      ])
+    ) {
       return { type: "no", text };
     }
   }

@@ -10,6 +10,7 @@ import { useNetraStore } from "../store/useNetraStore.js";
 import ReadResult from "../components/results/ReadResults.jsx";
 import { useNetraVoice } from "../voice/useNetraVoice.js";
 import { parseVoiceIntent } from "../voice/voiceIntents.js";
+import { openWalkAssist } from "../voice/openWalkAssist.js";
 
 const RESULT_COPY = {
   describe: {
@@ -38,13 +39,15 @@ export default function ResultPage() {
 
   const hasSpokenRef = useRef(false);
   const conversationRef = useRef(0);
+  const speechInterruptedRef = useRef(false);
   const [resultSpeechDone, setResultSpeechDone] = useState(false);
-  const { ask, speakAndWait: voiceSpeakAndWait, cancelConversation } = useNetraVoice();
+  const { ask, speakAndWait: voiceSpeakAndWait, cancelConversation, voiceAssistantActive, voiceEnabled, deactivateVoiceAssistant } = useNetraVoice();
 
   const currentResult = useNetraStore((state) => state.currentResult);
 
   const speechRate = useNetraStore((state) => state.speechRate);
   const autoSpeak = useNetraStore((state) => state.autoSpeak);
+  const setWalkInitialLocation = useNetraStore((state) => state.setWalkInitialLocation);
 
   const { speak, isSpeaking } = useSpeechSynthesis();
 
@@ -55,6 +58,16 @@ export default function ResultPage() {
 
   // Netra is English-only for MVP.
   const speechLanguage = "en-US";
+
+  useEffect(() => {
+    const onStopped = () => {
+      if (!hasSpokenRef.current) return;
+      speechInterruptedRef.current = true;
+      setResultSpeechDone(true);
+    };
+    window.addEventListener("netra-stop-speech", onStopped);
+    return () => window.removeEventListener("netra-stop-speech", onStopped);
+  }, []);
 
   useEffect(() => {
     const shouldSpeakAutomatically = mode === "describe" || mode === "read";
@@ -92,62 +105,51 @@ export default function ResultPage() {
   }, [autoSpeak, mode, result?.spokenResponse, speak, speechRate]);
 
   useEffect(() => {
-    if (!resultSpeechDone || (mode !== "describe" && mode !== "read")) return undefined;
+    if (!voiceAssistantActive || !voiceEnabled || !resultSpeechDone || (mode !== "describe" && mode !== "read")) return undefined;
     const version = ++conversationRef.current;
     let cancelled = false;
     const run = async () => {
-      let heard = await ask(
-        mode === "read"
-          ? "Would you like me to read something else?"
-          : "Would you like me to describe again?",
-      );
-      if (!heard || cancelled) return;
-      let intent = parseVoiceIntent(heard, { expectsConfirmation: true });
-      if (intent.type === "repeat") {
-        await voiceSpeakAndWait(result.spokenResponse);
-        heard = await ask("Say Scan Again or Home.");
-        if (!heard || cancelled) return;
-        intent = parseVoiceIntent(heard, { expectsConfirmation: true });
-      }
-      if (intent.type === "yes" || intent.type === "scan_again" || intent.type === mode) {
-        navigate(`/camera/${mode}`);
-        return;
-      }
-      if (intent.type === "home") {
-        navigate("/");
-        return;
-      }
-      if (intent.type === "no") {
-        heard = await ask("Would you like to return Home?");
-        if (!heard || cancelled) return;
-        intent = parseVoiceIntent(heard, { expectsConfirmation: true });
-        if (intent.type === "yes" || intent.type === "home") {
+      let prompt = speechInterruptedRef.current
+        ? "What can I help you with?"
+        : mode === "read" ? "Would you like me to read something else?" : "Would you like me to describe again?";
+      let confirmingHome = false;
+      while (!cancelled) {
+        const command = await ask(prompt);
+        prompt = "";
+        if (!command || cancelled) return;
+        const nextIntent = parseVoiceIntent(command, { expectsConfirmation: true });
+        if (nextIntent.type === "stop_voice") {
+          deactivateVoiceAssistant();
+          return;
+        } else if (nextIntent.type === "repeat" || nextIntent.type === "resume") {
+          await voiceSpeakAndWait(result.spokenResponse);
+          prompt = "What can I help you with?";
+        } else if (nextIntent.type === "yes" && confirmingHome) {
           navigate("/");
           return;
-        }
-        await voiceSpeakAndWait("Okay. You can say Repeat, Scan Again, or Home.");
-      } else if (intent.type === "help") {
-        await voiceSpeakAndWait("You can say Repeat, Scan Again, or Home.");
-      } else {
-        await voiceSpeakAndWait("I didn't understand. Say Repeat, Scan Again, or Home.");
-      }
-
-      while (!cancelled) {
-        const command = await ask("");
-        if (!command || cancelled) return;
-        const nextIntent = parseVoiceIntent(command);
-        if (nextIntent.type === "repeat") {
-          await voiceSpeakAndWait(result.spokenResponse);
-        } else if (nextIntent.type === "scan_again" || nextIntent.type === mode) {
+        } else if (nextIntent.type === "yes" || nextIntent.type === "scan_again" || nextIntent.type === mode || nextIntent.type === "back") {
           navigate(`/camera/${mode}`);
+          return;
+        } else if (nextIntent.type === "describe") {
+          navigate("/camera/describe");
+          return;
+        } else if (nextIntent.type === "read") {
+          navigate("/camera/read");
+          return;
+        } else if (nextIntent.type === "walk") {
+          await openWalkAssist({ navigate, setWalkInitialLocation });
           return;
         } else if (nextIntent.type === "home") {
           navigate("/");
           return;
         } else if (nextIntent.type === "help") {
-          await voiceSpeakAndWait("You can say Repeat, Scan Again, or Home.");
+          await voiceSpeakAndWait("Say Repeat to hear the result again, Scan Again, Describe, Read Text, Walk Assist, Back, Home, Stop, Continue, or Guide.");
+          prompt = "What can I help you with?";
+        } else if (nextIntent.type === "no") {
+          confirmingHome = true;
+          prompt = "Would you like to return Home?";
         } else {
-          await voiceSpeakAndWait("I didn't understand. Say Repeat, Scan Again, or Home.");
+          prompt = "I didn't understand. Say Repeat, Scan Again, or Home.";
         }
       }
     };
@@ -157,7 +159,7 @@ export default function ResultPage() {
       conversationRef.current += 1;
       cancelConversation();
     };
-  }, [ask, cancelConversation, mode, navigate, result?.spokenResponse, resultSpeechDone, voiceSpeakAndWait]);
+  }, [ask, cancelConversation, deactivateVoiceAssistant, mode, navigate, result?.spokenResponse, resultSpeechDone, setWalkInitialLocation, voiceAssistantActive, voiceEnabled, voiceSpeakAndWait]);
 
   if (!currentResult || !result) {
     return (

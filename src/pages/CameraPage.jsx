@@ -176,6 +176,7 @@ export default function CameraPage() {
     speakAndWait: voiceSpeakAndWait,
     voiceAssistantActive,
     voiceEnabled,
+    deactivateVoiceAssistant,
   } = useNetraVoice();
 
   const findQuery = useNetraStore((state) => state.findQuery);
@@ -578,6 +579,7 @@ export default function CameraPage() {
           stopCamera();
           navigate("/");
         },
+        back: handleBack,
       }),
     [
       cameraReady,
@@ -589,6 +591,20 @@ export default function CameraPage() {
       stopCamera,
     ],
   );
+
+  useEffect(() => {
+    if (mode !== "assist" || !voiceAssistantActive || !voiceEnabled) return undefined;
+    let timer = null;
+    const onStop = () => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => voiceSpeakAndWait("What can I help you with?"), 150);
+    };
+    window.addEventListener("netra-stop-speech", onStop);
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener("netra-stop-speech", onStop);
+    };
+  }, [mode, voiceAssistantActive, voiceEnabled, voiceSpeakAndWait]);
 
   useEffect(() => {
     if (
@@ -606,11 +622,23 @@ export default function CameraPage() {
     const listenForWalkCommands = async () => {
       while (!cancelled) {
         try {
+          if (window.speechSynthesis?.speaking) {
+            await new Promise((resolve) => window.setTimeout(resolve, 450));
+            continue;
+          }
           const heard = await listenWithTimeout(30000);
           if (cancelled) return;
           const intent = parseVoiceIntent(heard, {
             expectsConfirmation: false,
           });
+          if (intent.type === "stop_voice") {
+            deactivateVoiceAssistant();
+            return;
+          }
+          if (intent.type === "stop_talking") {
+            await voiceSpeakAndWait("What can I help you with?");
+            continue;
+          }
           if (intent.type === "pause" && !walkAssistPaused) handlePauseToggle();
           else if (intent.type === "resume" && walkAssistPaused)
             handlePauseToggle();
@@ -641,9 +669,9 @@ export default function CameraPage() {
             await voiceSpeakAndWait(`You are going to ${name}.`);
           } else if (intent.type === "help") {
             await voiceSpeakAndWait(
-              "You can say Pause, Resume, Repeat Direction, or End Walk.",
+              "Say Pause, Resume or Continue, Repeat Direction, Destination, Mute Guidance, Unmute Guidance, End Walk, Back, Home, Stop, or Guide.",
             );
-          } else if (intent.type === "end_walk") {
+          } else if (["end_walk", "back", "home"].includes(intent.type)) {
             await voiceSpeakAndWait(
               "Do you want to end Walk Assist and return Home?",
             );
@@ -670,6 +698,7 @@ export default function CameraPage() {
     };
   }, [
     abortListening,
+    deactivateVoiceAssistant,
     isEntrySpeaking,
     isWalkSpeaking,
     listenWithTimeout,

@@ -245,10 +245,16 @@ export default function WalkAssistPage() {
             expectsConfirmation: true,
           }).type;
 
-          if (intent === "home") {
+          if (intent === "home" || intent === "back") {
             clearWalkAssist();
             navigate("/");
             return "cancelled";
+          }
+
+          if (intent === "help") {
+            await speakAndWait("Tell me a destination. I search nearby matches and ask you to confirm. Say Back or Home to return, Stop to interrupt speech, Continue to resume, or Guide for help.");
+            attempt -= 1;
+            continue;
           }
 
           if (intent === "yes" || intent === "no") {
@@ -369,10 +375,14 @@ export default function WalkAssistPage() {
         const answer = await askVoice("Where would you like to go?");
         if (!answer) return;
         const command = parseVoiceIntent(answer);
-        if (command.type === "home") {
+        if (command.type === "home" || command.type === "back") {
           clearWalkAssist();
           navigate("/");
           return;
+        }
+        if (command.type === "help") {
+          await speakAndWait("Tell me a destination. I search nearby matches and ask you to confirm. Say Back or Home to return, Stop to interrupt speech, Continue to resume, or Guide for help.");
+          continue;
         }
         spokenDestination = answer.trim();
         noSpeechCount = 0;

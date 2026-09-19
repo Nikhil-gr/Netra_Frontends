@@ -63,7 +63,7 @@ export function useSpeechSynthesis() {
       utterance.onstart = () => {
         if (utteranceIdRef.current !== utteranceId) return;
         setIsSpeaking(true);
-        window.dispatchEvent(new CustomEvent("netra-speech-start"));
+        window.dispatchEvent(new CustomEvent("netra-speech-start", { detail: { text: text.trim() } }));
       };
 
       utterance.onend = () => {
