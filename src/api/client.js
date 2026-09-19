@@ -1,3 +1,5 @@
+// src/api/client.js
+
 import axios from "axios";
 
 const API_BASE_URL = import.meta.env.NETRA_API_URL || "/api/v1";
