@@ -96,6 +96,8 @@ export default function WalkAssistPage() {
     isSupported: recognitionSupported,
     unsupportedReason,
     abortListening,
+    voiceAssistantActive,
+    voiceEnabled,
   } = useNetraVoice();
 
   const cancelConversation = useCallback(() => {
@@ -239,7 +241,9 @@ export default function WalkAssistPage() {
             return "cancelled";
           }
 
-          const intent = parseVoiceIntent(answer, { expectsConfirmation: true }).type;
+          const intent = parseVoiceIntent(answer, {
+            expectsConfirmation: true,
+          }).type;
 
           if (intent === "home") {
             clearWalkAssist();
@@ -250,7 +254,6 @@ export default function WalkAssistPage() {
           if (intent === "yes" || intent === "no") {
             return intent;
           }
-
         } catch {
           if (attempt === 0) {
             await speakAndWait("I did not catch that. Please say yes or no.", {
@@ -267,6 +270,12 @@ export default function WalkAssistPage() {
   );
 
   const runVoiceConversation = useCallback(async () => {
+    if (!voiceAssistantActive || !voiceEnabled) {
+      setVoiceFallback(true);
+      setStatus("Voice assistant is not active. Type a destination below.");
+      return;
+    }
+
     const version = conversationVersionRef.current + 1;
     conversationVersionRef.current = version;
 
@@ -278,7 +287,9 @@ export default function WalkAssistPage() {
     if (!autoSpeak || !recognitionSupported) {
       setVoiceFallback(true);
       const message =
-        (!autoSpeak && "Voice Guide is off in Settings. Type a destination below.") || unsupportedReason ||
+        (!autoSpeak &&
+          "Voice Guide is off in Settings. Type a destination below.") ||
+        unsupportedReason ||
         "Automatic voice input is unavailable. Type a destination below.";
 
       setStatus(message);
@@ -513,10 +524,23 @@ export default function WalkAssistPage() {
     speak,
     speakAndWait,
     speechRate,
+    voiceAssistantActive,
+    voiceEnabled,
   ]);
 
   useEffect(() => {
     resetWalkRoute();
+
+    if (!voiceAssistantActive || !voiceEnabled) {
+      setVoiceFallback(true);
+      setStatus("Voice assistant is not active. Type a destination below.");
+
+      return () => {
+        conversationVersionRef.current += 1;
+        abortListening();
+        stopSpeech();
+      };
+    }
 
     autoStartTimerRef.current = window.setTimeout(() => {
       runVoiceConversation();
@@ -531,7 +555,14 @@ export default function WalkAssistPage() {
       abortListening();
       stopSpeech();
     };
-  }, [abortListening, resetWalkRoute, runVoiceConversation, stopSpeech]);
+  }, [
+    abortListening,
+    resetWalkRoute,
+    runVoiceConversation,
+    stopSpeech,
+    voiceAssistantActive,
+    voiceEnabled,
+  ]);
 
   const handleTypedSearch = async () => {
     const cleanedQuery = query.trim();
