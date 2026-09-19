@@ -4,7 +4,11 @@ import { useSpeechRecognition } from "../hooks/speech/useSpeechRecognition.js";
 import { useSpeechSynthesis } from "../hooks/speech/useSpeechSynthesis.js";
 import { useNetraStore } from "../store/useNetraStore.js";
 import { NetraVoiceContext } from "./useNetraVoice.js";
-import { normalizeVoiceText, parseVoiceIntent } from "./voiceIntents.js";
+import {
+  normalizeVoiceText,
+  parseBestVoiceIntent,
+  parseVoiceIntent,
+} from "./voiceIntents.js";
 import { openWalkAssist } from "./openWalkAssist.js";
 
 const LANDING_INTRO =
@@ -95,7 +99,7 @@ export default function NetraVoiceProvider({ children }) {
         rate: speechRate,
         ...options,
       });
-      if (spoken) await sleep(400);
+      if (spoken) await sleep(100);
       return spoken;
     },
     [autoSpeak, recognition.abortListening, speech.speakAndWait, speechRate],
@@ -123,6 +127,16 @@ export default function NetraVoiceProvider({ children }) {
       return recognition.listenWithTimeout(ms);
     },
     [recognition.listenWithTimeout, voiceAssistantActive, voiceEnabled],
+  );
+
+  const listenDetailedWithTimeout = useCallback(
+    (ms = 9000) => {
+      if (!voiceAssistantActive || !voiceEnabled || document.hidden) {
+        return Promise.reject(new Error("Voice assistant is not listening."));
+      }
+      return recognition.listenDetailedWithTimeout(ms);
+    },
+    [recognition.listenDetailedWithTimeout, voiceAssistantActive, voiceEnabled],
   );
 
   const deactivateVoiceAssistant = useCallback(() => {
@@ -174,7 +188,11 @@ export default function NetraVoiceProvider({ children }) {
   ]);
 
   const ask = useCallback(
-    async (prompt, version = versionRef.current) => {
+    async (
+      prompt,
+      version = versionRef.current,
+      { preferCommands = false } = {},
+    ) => {
       if (!voiceAssistantActive || !voiceEnabled) return null;
       let misses = 0;
       let next = prompt;
@@ -193,7 +211,15 @@ export default function NetraVoiceProvider({ children }) {
           continue;
         }
         try {
-          const heard = await listenWithTimeout(misses === 2 ? 7000 : 9000);
+          const timeout = misses === 2 ? 7000 : 9000;
+          const detailed = preferCommands
+            ? await listenDetailedWithTimeout(timeout)
+            : null;
+          const heard = preferCommands
+            ? parseBestVoiceIntent(
+                detailed?.alternatives || [detailed?.transcript],
+              ).transcript
+            : await listenWithTimeout(timeout);
           const intent = parseVoiceIntent(heard);
           if (intent.type === "stop_voice") {
             deactivateVoiceAssistant();
@@ -249,6 +275,7 @@ export default function NetraVoiceProvider({ children }) {
     },
     [
       deactivateVoiceAssistant,
+      listenDetailedWithTimeout,
       listenWithTimeout,
       location.pathname,
       speakAndWait,
@@ -313,7 +340,7 @@ export default function NetraVoiceProvider({ children }) {
       let prompt = firstActivationRef.current ? ACTIVATED : READY;
       firstActivationRef.current = false;
       while (versionRef.current === version) {
-        const heard = await ask(prompt, version);
+        const heard = await ask(prompt, version, { preferCommands: true });
         prompt = "";
         if (!heard) return;
         const intent = parseVoiceIntent(heard);
@@ -358,7 +385,7 @@ export default function NetraVoiceProvider({ children }) {
           : "Describe mode is ready. Point the camera toward your surroundings. Would you like me to describe what is ahead?";
       let confirmingHome = false;
       while (versionRef.current === version) {
-        const heard = await ask(prompt, version);
+        const heard = await ask(prompt, version, { preferCommands: true });
         prompt = "";
         if (!heard) return;
         const intent = parseVoiceIntent(heard, { expectsConfirmation: true });

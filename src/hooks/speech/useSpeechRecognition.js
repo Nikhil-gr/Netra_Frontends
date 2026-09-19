@@ -4,7 +4,7 @@ const getRecognitionErrorMessage = (errorCode) => {
   switch (errorCode) {
     case "not-allowed":
     case "service-not-allowed":
-      return "Microphone permission was denied. Allow microphone access and try Walk Assist again.";
+      return "Microphone permission was denied. Allow microphone access and try again.";
 
     case "audio-capture":
       return "No microphone is available.";
@@ -20,14 +20,20 @@ const getRecognitionErrorMessage = (errorCode) => {
   }
 };
 
+const EMPTY_RESULT = {
+  transcript: "",
+  alternatives: [],
+};
+
 export function useSpeechRecognition({ language = "en-US" } = {}) {
   const recognitionRef = useRef(null);
   const pendingRef = useRef(null);
   const resultReceivedRef = useRef(false);
   const activeRef = useRef(false);
-  const nextTranscriptRef = useRef("");
+  const resultRef = useRef(EMPTY_RESULT);
 
   const [transcript, setTranscript] = useState("");
+  const [alternatives, setAlternatives] = useState([]);
   const [isListening, setIsListening] = useState(false);
   const [error, setError] = useState(null);
 
@@ -44,15 +50,13 @@ export function useSpeechRecognition({ language = "en-US" } = {}) {
   const isSupported = browserSupportsRecognition && isSecure;
 
   const unsupportedReason = !isSecure
-    ? "Automatic voice input requires HTTPS on mobile. Open Netra using your HTTPS ngrok link."
+    ? "Automatic voice input requires HTTPS on mobile. Open Netra using your HTTPS link."
     : !browserSupportsRecognition
-      ? "Automatic voice recognition is not available in this browser. Use Chrome or Edge for voice input, or type the destination below."
+      ? "Automatic voice recognition is not available in this browser. Use Chrome or Edge for voice input."
       : "";
 
   const rejectPending = useCallback((message) => {
-    if (!pendingRef.current) {
-      return;
-    }
+    if (!pendingRef.current) return;
 
     const { reject } = pendingRef.current;
     pendingRef.current = null;
@@ -60,30 +64,51 @@ export function useSpeechRecognition({ language = "en-US" } = {}) {
   }, []);
 
   useEffect(() => {
-    if (!isSupported) {
-      return undefined;
-    }
+    if (!isSupported) return undefined;
 
     const recognition = new RecognitionConstructor();
 
     recognition.lang = language;
     recognition.continuous = false;
     recognition.interimResults = false;
-    recognition.maxAlternatives = 1;
+
+    // Let the browser give us several likely interpretations instead of only one.
+    // This is especially useful for commands such as "Walk Assist" where Chrome may
+    // return "walk assistant" as its first choice and "walk assist" as another.
+    recognition.maxAlternatives = 5;
 
     recognition.onstart = () => {
       activeRef.current = true;
       resultReceivedRef.current = false;
+      resultRef.current = EMPTY_RESULT;
       setIsListening(true);
       setError(null);
     };
 
     recognition.onresult = (event) => {
-      const nextTranscript = event.results?.[0]?.[0]?.transcript?.trim() || "";
+      const firstResult = event.results?.[0];
+
+      const nextAlternatives = firstResult
+        ? Array.from(firstResult)
+            .map((item) => ({
+              transcript: item?.transcript?.trim() || "",
+              confidence: Number.isFinite(item?.confidence)
+                ? item.confidence
+                : null,
+            }))
+            .filter((item) => item.transcript)
+        : [];
+
+      const nextTranscript = nextAlternatives[0]?.transcript || "";
 
       resultReceivedRef.current = Boolean(nextTranscript);
-      nextTranscriptRef.current = nextTranscript;
+      resultRef.current = {
+        transcript: nextTranscript,
+        alternatives: nextAlternatives,
+      };
+
       setTranscript(nextTranscript);
+      setAlternatives(nextAlternatives);
     };
 
     recognition.onerror = (event) => {
@@ -103,11 +128,20 @@ export function useSpeechRecognition({ language = "en-US" } = {}) {
       activeRef.current = false;
       setIsListening(false);
 
-      if (pendingRef.current) {
-        const pending = pendingRef.current;
-        pendingRef.current = null;
-        if (resultReceivedRef.current) pending.resolve(nextTranscriptRef.current);
-        else pending.reject(new Error("I did not hear anything."));
+      if (!pendingRef.current) return;
+
+      const pending = pendingRef.current;
+      pendingRef.current = null;
+
+      if (!resultReceivedRef.current) {
+        pending.reject(new Error("I did not hear anything."));
+        return;
+      }
+
+      if (pending.mode === "detailed") {
+        pending.resolve(resultRef.current);
+      } else {
+        pending.resolve(resultRef.current.transcript);
       }
     };
 
@@ -134,53 +168,71 @@ export function useSpeechRecognition({ language = "en-US" } = {}) {
     };
   }, [RecognitionConstructor, isSupported, language, rejectPending]);
 
-  const listenOnce = useCallback(() => {
-    return new Promise((resolve, reject) => {
-      if (!isSupported || !recognitionRef.current) {
-        reject(
-          new Error(
-            unsupportedReason ||
-              "Voice recognition is not supported by this browser.",
-          ),
-        );
-        return;
-      }
+  const beginListening = useCallback(
+    (mode = "text") =>
+      new Promise((resolve, reject) => {
+        if (!isSupported || !recognitionRef.current) {
+          reject(
+            new Error(
+              unsupportedReason ||
+                "Voice recognition is not supported by this browser.",
+            ),
+          );
+          return;
+        }
 
-      if (pendingRef.current || activeRef.current) {
-        reject(new Error("Voice recognition is already listening."));
-        return;
-      }
+        if (pendingRef.current || activeRef.current) {
+          reject(new Error("Voice recognition is already listening."));
+          return;
+        }
 
-      setTranscript("");
-      setError(null);
-      resultReceivedRef.current = false;
-      nextTranscriptRef.current = "";
-      pendingRef.current = { resolve, reject };
+        setTranscript("");
+        setAlternatives([]);
+        setError(null);
+        resultReceivedRef.current = false;
+        resultRef.current = EMPTY_RESULT;
+        pendingRef.current = { resolve, reject, mode };
 
-      try {
-        activeRef.current = true;
-        recognitionRef.current.start();
-      } catch (startError) {
-        activeRef.current = false;
-        pendingRef.current = null;
-        const message = startError?.message || "Unable to start voice input.";
-        setError(message);
-        reject(new Error(message));
-      }
-    });
-  }, [isSupported, unsupportedReason]);
+        try {
+          activeRef.current = true;
+          recognitionRef.current.start();
+        } catch (startError) {
+          activeRef.current = false;
+          pendingRef.current = null;
+          const message = startError?.message || "Unable to start voice input.";
+          setError(message);
+          reject(new Error(message));
+        }
+      }),
+    [isSupported, unsupportedReason],
+  );
+
+  const listenOnce = useCallback(
+    () => beginListening("text"),
+    [beginListening],
+  );
+
+  const listenOnceDetailed = useCallback(
+    () => beginListening("detailed"),
+    [beginListening],
+  );
 
   const startListening = useCallback(() => {
-    if (!isSupported || !recognitionRef.current || isListening || activeRef.current) {
-      if (!isSupported && unsupportedReason) {
-        setError(unsupportedReason);
-      }
-
+    if (
+      !isSupported ||
+      !recognitionRef.current ||
+      isListening ||
+      activeRef.current
+    ) {
+      if (!isSupported && unsupportedReason) setError(unsupportedReason);
       return false;
     }
 
     setTranscript("");
+    setAlternatives([]);
     setError(null);
+    resultReceivedRef.current = false;
+    resultRef.current = EMPTY_RESULT;
 
     try {
       activeRef.current = true;
@@ -194,9 +246,7 @@ export function useSpeechRecognition({ language = "en-US" } = {}) {
   }, [isListening, isSupported, unsupportedReason]);
 
   const stopListening = useCallback(() => {
-    if (!recognitionRef.current) {
-      return;
-    }
+    if (!recognitionRef.current) return;
 
     try {
       recognitionRef.current.stop();
@@ -204,9 +254,7 @@ export function useSpeechRecognition({ language = "en-US" } = {}) {
   }, []);
 
   const abortListening = useCallback(() => {
-    if (!recognitionRef.current) {
-      return;
-    }
+    if (!recognitionRef.current) return;
 
     try {
       recognitionRef.current.abort();
@@ -218,40 +266,56 @@ export function useSpeechRecognition({ language = "en-US" } = {}) {
       reject(new Error("Voice listening stopped."));
     }
 
+    activeRef.current = false;
     setIsListening(false);
   }, []);
 
-  const listenWithTimeout = useCallback(
-    (timeoutMs = 9000) =>
+  const withTimeout = useCallback(
+    (listenFn, timeoutMs = 9000) =>
       new Promise((resolve, reject) => {
         let settled = false;
+
         const settle = (callback, value) => {
           if (settled) return;
           settled = true;
           window.clearTimeout(timer);
           callback(value);
         };
+
         const timer = window.setTimeout(() => {
           abortListening();
           settle(reject, new Error("I did not hear anything."));
         }, timeoutMs);
 
-        listenOnce().then(
+        listenFn().then(
           (value) => settle(resolve, value),
           (listenError) => settle(reject, listenError),
         );
       }),
-    [abortListening, listenOnce],
+    [abortListening],
+  );
+
+  const listenWithTimeout = useCallback(
+    (timeoutMs = 9000) => withTimeout(listenOnce, timeoutMs),
+    [listenOnce, withTimeout],
+  );
+
+  const listenDetailedWithTimeout = useCallback(
+    (timeoutMs = 9000) => withTimeout(listenOnceDetailed, timeoutMs),
+    [listenOnceDetailed, withTimeout],
   );
 
   return {
     transcript,
+    alternatives,
     isListening,
     error,
     isSupported,
     unsupportedReason,
     listenOnce,
+    listenOnceDetailed,
     listenWithTimeout,
+    listenDetailedWithTimeout,
     startListening,
     stopListening,
     abortListening,
