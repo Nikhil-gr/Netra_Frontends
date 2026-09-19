@@ -6,7 +6,6 @@ import {
   FileText,
   Search,
   ShieldAlert,
-  Sparkles,
   Volume2,
   VolumeX,
 } from "lucide-react";
@@ -17,6 +16,7 @@ import CameraView from "../components/camera/CameraView.jsx";
 import DetectionPanel from "../components/camera/DirectionPanel.jsx";
 import ProcessingState from "../components/common/ProcessingState.jsx";
 import WalkAssistStatusPanel from "../components/walk/WalkAssistStatusPanel.jsx";
+import DescribeSurroundingsScreen from "../components/describe/DescribeSurroundingsScreen.jsx";
 
 import { useCamera } from "../hooks/camera/useCamera.js";
 
@@ -169,6 +169,9 @@ export default function CameraPage() {
   const [analysisError, setAnalysisError] = useState(null);
   const [cameraReady, setCameraReady] = useState(false);
   const [walkGuidanceMuted, setWalkGuidanceMuted] = useState(false);
+
+  const [describeFlash, setDescribeFlash] = useState(false);
+
   const {
     registerActions,
     listenWithTimeout,
@@ -495,6 +498,14 @@ export default function CameraPage() {
 
   const handleRead = () => handleImageAnalysis("read");
 
+  const handleDescribeCaptureConfirmed = async () => {
+    setDescribeFlash(true);
+
+    window.setTimeout(() => setDescribeFlash(false), 150);
+
+    await handleDescribe();
+  };
+
   const handleBack = () => {
     if (mode === "assist") {
       stopCamera();
@@ -791,6 +802,50 @@ export default function CameraPage() {
 
   const isSpeaking = isEntrySpeaking || isDetectionSpeaking || isWalkSpeaking;
 
+  if (mode === "describe") {
+    const describeHint = error
+      ? error
+      : analysisError
+        ? analysisError
+        : analyzeMutation.isPending
+          ? "Understanding your surroundings..."
+          : isArmed("describe-scene")
+            ? "Describe scene selected. Tap again to analyze."
+            : "Point the camera forward, then tap the button to describe your surroundings.";
+
+    return (
+      <DescribeSurroundingsScreen
+        videoRef={videoRef}
+        stream={stream}
+        cameraError={error}
+        isStarting={isStarting}
+        onRetryCamera={startCamera}
+        scanning={analyzeMutation.isPending}
+        flash={describeFlash}
+        hintText={describeHint}
+        onCapture={() =>
+          trigger({
+            id: "describe-scene",
+            announcement:
+              "Describe scene button clicked. Press again to analyze the scene.",
+            action: handleDescribeCaptureConfirmed,
+          })
+        }
+        captureDisabled={!stream || isStarting || Boolean(error)}
+        captureBusy={analyzeMutation.isPending}
+        captureArmed={isArmed("describe-scene")}
+        onBack={() =>
+          trigger({
+            id: "camera-back",
+            announcement: "Back button clicked. Press again to return home.",
+            action: handleBack,
+          })
+        }
+        backArmed={isArmed("camera-back")}
+      />
+    );
+  }
+
   return (
     <main className="mx-auto min-h-screen w-full max-w-6xl px-4 py-5 sm:px-6">
       <header className="flex items-center justify-between gap-4">
@@ -856,46 +911,6 @@ export default function CameraPage() {
             isStarting={isStarting}
           />
 
-          {mode === "describe" && (
-            <div className="mt-5">
-              {analyzeMutation.isPending ? (
-                <ProcessingState message="Understanding your surroundings..." />
-              ) : (
-                <button
-                  type="button"
-                  disabled={!stream || isStarting}
-                  onClick={() =>
-                    trigger({
-                      id: "describe-scene",
-
-                      announcement:
-                        "Describe scene button clicked. Press again to analyze the scene.",
-
-                      action: handleDescribe,
-                    })
-                  }
-                  className={`inline-flex min-h-16 w-full items-center justify-center gap-3 rounded-2xl px-6 py-4 text-lg font-semibold text-white transition disabled:cursor-not-allowed disabled:opacity-50 ${
-                    isArmed("describe-scene")
-                      ? "bg-emerald-800 ring-4 ring-emerald-100"
-                      : "bg-emerald-700 hover:bg-emerald-800"
-                  }`}
-                >
-                  <Sparkles size={23} />
-                  Describe scene
-                </button>
-              )}
-
-              {analysisError && (
-                <div
-                  className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm leading-6 text-red-700"
-                  role="alert"
-                >
-                  {analysisError}
-                </div>
-              )}
-            </div>
-          )}
-
           {mode === "read" && (
             <div className="mt-5">
               {analyzeMutation.isPending ? (
@@ -956,23 +971,6 @@ export default function CameraPage() {
             </div>
           )}
         </div>
-
-        {mode === "describe" && (
-          <aside className="rounded-2xl border border-slate-200 bg-white p-5">
-            <Eye size={22} className="text-emerald-700" />
-
-            <h2 className="mt-4 font-semibold text-slate-950">Describe mode</h2>
-
-            <p className="mt-2 text-sm leading-6 text-slate-600">
-              Point the camera at the scene you want Netra to understand.
-            </p>
-
-            <p className="mt-4 text-sm leading-6 text-slate-500">
-              Press Describe scene once to hear the button. Press it again to
-              analyze.
-            </p>
-          </aside>
-        )}
 
         {mode === "read" && (
           <aside className="rounded-2xl border border-slate-200 bg-white p-5">
