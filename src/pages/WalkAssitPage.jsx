@@ -60,6 +60,7 @@ export default function WalkAssistPage() {
 
   const conversationVersionRef = useRef(0);
   const autoStartTimerRef = useRef(null);
+  const cachedLocationRef = useRef(null);
 
   const speechRate = useNetraStore((state) => state.speechRate);
   const autoSpeak = useNetraStore((state) => state.autoSpeak);
@@ -100,6 +101,15 @@ export default function WalkAssistPage() {
     voiceEnabled,
   } = useNetraVoice();
 
+  const getRouteLocation = useCallback(async () => {
+    const cached = [cachedLocationRef.current, walkInitialLocation].find(
+      (position) => position && Date.now() - Number(position.timestamp || 0) < 120000,
+    );
+    const position = cached || await getCurrentPosition();
+    cachedLocationRef.current = position;
+    return position;
+  }, [getCurrentPosition, walkInitialLocation]);
+
   const cancelConversation = useCallback(() => {
     conversationVersionRef.current += 1;
     abortListening();
@@ -112,12 +122,13 @@ export default function WalkAssistPage() {
         return;
       }
 
+      abortListening();
       setIsStartingRoute(true);
       setErrorMessage("");
       setStatus("Getting your walking route...");
 
       try {
-        const currentLocation = await getCurrentPosition();
+        const currentLocation = await getRouteLocation();
 
         if (conversationVersionRef.current !== version) {
           return;
@@ -165,22 +176,6 @@ export default function WalkAssistPage() {
         setWalkAssistPaused(false);
         setWalkLastCue("");
 
-        setStatus("Route ready.");
-
-        await speakAndWait(
-          `Starting Walk Assist to ${getDestinationName(
-            normalizedDestination,
-          )}.`,
-          {
-            language: "en-US",
-            rate: speechRate,
-          },
-        );
-
-        if (conversationVersionRef.current !== version) {
-          return;
-        }
-
         navigate("/camera/assist");
       } catch (error) {
         if (conversationVersionRef.current !== version) {
@@ -207,7 +202,8 @@ export default function WalkAssistPage() {
       }
     },
     [
-      getCurrentPosition,
+      abortListening,
+      getRouteLocation,
       navigate,
       setWalkAssistActive,
       setWalkAssistPaused,
@@ -215,7 +211,6 @@ export default function WalkAssistPage() {
       setWalkLastCue,
       setWalkRoute,
       speak,
-      speakAndWait,
       speechRate,
     ],
   );
@@ -337,13 +332,7 @@ export default function WalkAssistPage() {
 
     try {
       setStatus("Getting your location...");
-      const hasFreshInitialLocation =
-        walkInitialLocation &&
-        Date.now() - Number(walkInitialLocation.timestamp || 0) < 120000;
-
-      currentLocation = hasFreshInitialLocation
-        ? walkInitialLocation
-        : await getCurrentPosition();
+      currentLocation = await getRouteLocation();
     } catch (error) {
       if (conversationVersionRef.current !== version) {
         return;
@@ -523,7 +512,7 @@ export default function WalkAssistPage() {
     askVoice,
     autoSpeak,
     clearWalkAssist,
-    getCurrentPosition,
+    getRouteLocation,
     locationSecure,
     locationSupported,
     navigate,
@@ -597,13 +586,7 @@ export default function WalkAssistPage() {
     setStatus(`Searching for ${cleanedQuery}...`);
 
     try {
-      const hasFreshInitialLocation =
-        walkInitialLocation &&
-        Date.now() - Number(walkInitialLocation.timestamp || 0) < 120000;
-
-      const currentLocation = hasFreshInitialLocation
-        ? walkInitialLocation
-        : await getCurrentPosition();
+      const currentLocation = await getRouteLocation();
 
       const items = await searchDestinations(cleanedQuery);
       const sorted = sortDestinationsByDistance(items, currentLocation);

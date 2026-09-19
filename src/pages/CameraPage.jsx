@@ -163,11 +163,14 @@ export default function CameraPage() {
   const lastAnnouncedModeRef = useRef(null);
 
   const analysisLockRef = useRef(false);
+  const walkSpeechRef = useRef("");
 
   const [liveAnnouncementsReady, setLiveAnnouncementsReady] = useState(false);
 
   const [analysisError, setAnalysisError] = useState(null);
   const [cameraReady, setCameraReady] = useState(false);
+  const [walkDetectionReady, setWalkDetectionReady] = useState(false);
+  const [walkVoiceReady, setWalkVoiceReady] = useState(false);
   const [walkGuidanceMuted, setWalkGuidanceMuted] = useState(false);
   const {
     registerActions,
@@ -177,6 +180,7 @@ export default function CameraPage() {
     voiceAssistantActive,
     voiceEnabled,
     deactivateVoiceAssistant,
+    stopCurrentSpeech,
   } = useNetraVoice();
 
   const findQuery = useNetraStore((state) => state.findQuery);
@@ -221,7 +225,7 @@ export default function CameraPage() {
 
   const { trigger, isArmed } = useSpokenAction();
 
-  const { stream, error, isStarting, startCamera, stopCamera } = useCamera();
+  const { stream, error, isStarting, startCamera, stopCamera } = useCamera({ walkAssist: mode === "assist" });
 
   const analyzeMutation = useAnalyzeImage();
 
@@ -237,7 +241,7 @@ export default function CameraPage() {
 
   const localDetectionEnabled =
     Boolean(stream) &&
-    (mode === "find" || (mode === "assist" && !walkAssistPaused));
+    (mode === "find" || (mode === "assist" && cameraReady && walkDetectionReady && !walkAssistPaused));
 
   const { detections, isModelLoading, isDetecting, detectionError } =
     useObjectDetection({
@@ -245,12 +249,26 @@ export default function CameraPage() {
 
       enabled: localDetectionEnabled,
 
-      minScore: mode === "find" ? 0.5 : 0.45,
+      minScore: mode === "find" ? 0.5 : 0.55,
 
-      interval: mode === "assist" ? 500 : 700,
+      interval: mode === "assist" ? 1500 : 700,
 
-      maxDetections: mode === "assist" ? 20 : 10,
+      maxDetections: mode === "assist" ? 6 : 10,
     });
+
+  useEffect(() => {
+    setWalkDetectionReady(false);
+    setWalkVoiceReady(false);
+    if (mode !== "assist" || !cameraReady || missingWalkRoute) return undefined;
+    const timer = window.setTimeout(() => setWalkDetectionReady(true), 1800);
+    return () => window.clearTimeout(timer);
+  }, [mode, cameraReady, missingWalkRoute]);
+
+  useEffect(() => {
+    if (!walkDetectionReady || isModelLoading || !liveAnnouncementsReady) return undefined;
+    const timer = window.setTimeout(() => setWalkVoiceReady(true), 400);
+    return () => window.clearTimeout(timer);
+  }, [walkDetectionReady, isModelLoading, liveAnnouncementsReady]);
 
   const visibleDetections =
     mode === "find"
@@ -272,7 +290,7 @@ export default function CameraPage() {
 
     isTracking,
   } = useGeolocation({
-    enabled: mode === "assist" && isValidMode && !missingWalkRoute,
+    enabled: mode === "assist" && cameraReady && isValidMode && !missingWalkRoute,
   });
 
   const {
@@ -293,7 +311,7 @@ export default function CameraPage() {
     enabled:
       mode === "assist" &&
       !missingWalkRoute &&
-      liveAnnouncementsReady &&
+      cameraReady &&
       !walkAssistPaused,
   });
 
@@ -380,6 +398,7 @@ export default function CameraPage() {
       !isValidMode ||
       missingFindQuery ||
       missingWalkRoute ||
+      (mode === "assist" && !cameraReady) ||
       lastAnnouncedModeRef.current === mode
     ) {
       return;
@@ -430,6 +449,7 @@ export default function CameraPage() {
       }
     };
   }, [
+    cameraReady,
     findQuery,
     isValidMode,
     missingFindQuery,
@@ -599,9 +619,18 @@ export default function CameraPage() {
       window.clearTimeout(timer);
       timer = window.setTimeout(() => voiceSpeakAndWait("What can I help you with?"), 150);
     };
+    const onSpeechStart = (event) => {
+      walkSpeechRef.current = event.detail?.text || "";
+    };
+    const onSpeechEnd = () => { walkSpeechRef.current = ""; };
+    window.addEventListener("netra-speech-start", onSpeechStart);
+    window.addEventListener("netra-speech-end", onSpeechEnd);
     window.addEventListener("netra-stop-speech", onStop);
     return () => {
       window.clearTimeout(timer);
+      walkSpeechRef.current = "";
+      window.removeEventListener("netra-speech-start", onSpeechStart);
+      window.removeEventListener("netra-speech-end", onSpeechEnd);
       window.removeEventListener("netra-stop-speech", onStop);
     };
   }, [mode, voiceAssistantActive, voiceEnabled, voiceSpeakAndWait]);
@@ -610,33 +639,42 @@ export default function CameraPage() {
     if (
       mode !== "assist" ||
       missingWalkRoute ||
-      isEntrySpeaking ||
-      isWalkSpeaking ||
+      !walkVoiceReady ||
       !voiceAssistantActive ||
       !voiceEnabled
     ) {
-      abortListening();
       return undefined;
     }
     let cancelled = false;
     const listenForWalkCommands = async () => {
       while (!cancelled) {
         try {
-          if (window.speechSynthesis?.speaking) {
-            await new Promise((resolve) => window.setTimeout(resolve, 450));
+          if (document.hidden) {
+            await new Promise((resolve) => window.setTimeout(resolve, 800));
             continue;
           }
+          const speechAtStart = walkSpeechRef.current;
           const heard = await listenWithTimeout(30000);
           if (cancelled) return;
           const intent = parseVoiceIntent(heard, {
             expectsConfirmation: false,
           });
+          // During guidance, accept only Stop and ignore commands in our own speech.
+          const spokenText = `${speechAtStart} ${walkSpeechRef.current}`;
+          if (spokenText.trim() && (
+            intent.type !== "stop_talking" ||
+            /\b(stop|stop talking|be quiet|quiet|shush|that's enough)\b/i.test(spokenText)
+          )) {
+            await new Promise((resolve) => window.setTimeout(resolve, 400));
+            continue;
+          }
           if (intent.type === "stop_voice") {
             deactivateVoiceAssistant();
             return;
           }
           if (intent.type === "stop_talking") {
-            await voiceSpeakAndWait("What can I help you with?");
+            stopCurrentSpeech();
+            await new Promise((resolve) => window.setTimeout(resolve, 400));
             continue;
           }
           if (intent.type === "pause" && !walkAssistPaused) handlePauseToggle();
@@ -675,19 +713,25 @@ export default function CameraPage() {
             await voiceSpeakAndWait(
               "Do you want to end Walk Assist and return Home?",
             );
-            try {
-              const answer = parseVoiceIntent(await listenWithTimeout(9000), {
-                expectsConfirmation: true,
-              });
-              if (answer.type === "yes") {
-                handleEndWalk();
-                return;
-              }
-              await voiceSpeakAndWait("Okay. Continuing Walk Assist.");
-            } catch {}
+            if (cancelled) return;
+            const answer = parseVoiceIntent(await listenWithTimeout(9000), {
+              expectsConfirmation: true,
+            });
+            if (cancelled) return;
+            if (answer.type === "yes") {
+              handleEndWalk();
+              return;
+            }
+            await voiceSpeakAndWait("Okay. Continuing Walk Assist.");
           }
-        } catch {
-          // Silence is normal during active walking; re-arm without prompting.
+          await new Promise((resolve) => window.setTimeout(resolve, 400));
+        } catch (error) {
+          if (cancelled) return;
+          if (/denied|not.allowed|network|microphone|audio-capture/i.test(error?.message || "")) {
+            deactivateVoiceAssistant();
+            return;
+          }
+          await new Promise((resolve) => window.setTimeout(resolve, 900));
         }
       }
     };
@@ -699,8 +743,8 @@ export default function CameraPage() {
   }, [
     abortListening,
     deactivateVoiceAssistant,
-    isEntrySpeaking,
-    isWalkSpeaking,
+    walkVoiceReady,
+    stopCurrentSpeech,
     listenWithTimeout,
     missingWalkRoute,
     mode,

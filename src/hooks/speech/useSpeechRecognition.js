@@ -266,7 +266,7 @@ export function useSpeechRecognition({ language = "en-US" } = {}) {
       reject(new Error("Voice listening stopped."));
     }
 
-    activeRef.current = false;
+    // Keep the session locked until the browser delivers onend.
     setIsListening(false);
   }, []);
 

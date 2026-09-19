@@ -207,8 +207,7 @@ export function useObjectDetection({
     return () => {
       cancelled = true;
 
-      runningRef.current = false;
-
+      // An in-flight inference keeps its lock until its finally block.
       if (timerId) {
         window.clearTimeout(timerId);
       }

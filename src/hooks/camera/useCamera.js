@@ -27,8 +27,10 @@ function getCameraError(error) {
   }
 }
 
-export function useCamera() {
+export function useCamera({ walkAssist = false } = {}) {
   const streamRef = useRef(null);
+  const requestRef = useRef(null);
+  const versionRef = useRef(0);
 
   const [stream, setStream] = useState(null);
 
@@ -37,6 +39,7 @@ export function useCamera() {
   const [isStarting, setIsStarting] = useState(false);
 
   const stopCamera = useCallback(() => {
+    versionRef.current += 1;
     stopStream(streamRef.current);
 
     streamRef.current = null;
@@ -51,41 +54,54 @@ export function useCamera() {
       return;
     }
 
+    const version = ++versionRef.current;
     try {
       setIsStarting(true);
       setError(null);
 
+      if (requestRef.current) {
+        await requestRef.current.catch(() => {});
+      }
+      if (version !== versionRef.current) return;
       stopStream(streamRef.current);
 
-      const nextStream = await navigator.mediaDevices.getUserMedia({
+      const request = navigator.mediaDevices.getUserMedia({
         video: {
+          ...(walkAssist ? { frameRate: { ideal: 15, max: 20 } } : {}),
           facingMode: {
             ideal: "environment",
           },
 
           width: {
-            ideal: 1280,
+            ideal: walkAssist ? 640 : 1280,
           },
 
           height: {
-            ideal: 720,
+            ideal: walkAssist ? 480 : 720,
           },
         },
 
         audio: false,
       });
 
+      requestRef.current = request;
+      const nextStream = await request;
+      if (version !== versionRef.current) {
+        stopStream(nextStream);
+        return;
+      }
       streamRef.current = nextStream;
 
       setStream(nextStream);
     } catch (cameraError) {
+      if (version !== versionRef.current) return;
       console.error(cameraError);
 
       setError(getCameraError(cameraError));
     } finally {
-      setIsStarting(false);
+      if (version === versionRef.current) setIsStarting(false);
     }
-  }, []);
+  }, [walkAssist]);
 
   return {
     stream,

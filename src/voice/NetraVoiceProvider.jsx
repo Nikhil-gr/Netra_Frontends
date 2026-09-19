@@ -332,6 +332,7 @@ export default function NetraVoiceProvider({ children }) {
   ]);
 
   useEffect(() => {
+    if (location.pathname === "/camera/assist") return undefined;
     cancelConversation();
     const version = versionRef.current;
     if (!voiceAssistantActive || !voiceEnabled || document.hidden)
@@ -444,6 +445,7 @@ export default function NetraVoiceProvider({ children }) {
   // Only the provider's recognizer is used. Barge-in accepts exact stop phrases,
   // never ordinary commands, and is disabled when that phrase is in Netra's own speech.
   useEffect(() => {
+    if (location.pathname === "/camera/assist") return undefined;
     let bargeTimer = null;
     const onStart = (event) => {
       if (!voiceAssistantActive || !voiceEnabled || document.hidden) return;
@@ -511,6 +513,7 @@ export default function NetraVoiceProvider({ children }) {
   }, [
     recognition.abortListening,
     recognition.listenWithTimeout,
+    location.pathname,
     stopCurrentSpeech,
     voiceAssistantActive,
     voiceEnabled,
