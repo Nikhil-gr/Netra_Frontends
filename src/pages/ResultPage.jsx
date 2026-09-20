@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Camera, ChevronLeft, Volume2 } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 
@@ -47,10 +47,38 @@ export default function ResultPage() {
 
   const { speak, isSpeaking } = useSpeechSynthesis();
   const { trigger, isArmed } = useSpokenAction();
+  const { registerActions, voiceAssistantActive } = useNetraVoice();
 
   const mode = currentResult?.mode;
   const result = currentResult?.result;
   const speechLanguage = "en-US";
+
+  const repeatResult = useCallback(() => {
+    if (!result?.spokenResponse) return;
+    speak(result.spokenResponse, {
+      language: speechLanguage,
+      rate: speechRate,
+    });
+  }, [result?.spokenResponse, speak, speechLanguage, speechRate]);
+
+  const scanAgain = useCallback(() => {
+    navigate(`/camera/${mode || "describe"}`);
+  }, [mode, navigate]);
+
+  const goHome = useCallback(() => {
+    navigate("/");
+  }, [navigate]);
+
+  useEffect(
+    () =>
+      registerActions({
+        repeat: repeatResult,
+        scanAgain,
+        home: goHome,
+        back: goHome,
+      }),
+    [goHome, registerActions, repeatResult, scanAgain],
+  );
 
   useEffect(() => {
     const onStopped = () => {
@@ -69,7 +97,8 @@ export default function ResultPage() {
       !autoSpeak ||
       !shouldSpeakAutomatically ||
       !result?.spokenResponse ||
-      hasSpokenRef.current
+      hasSpokenRef.current ||
+      voiceAssistantActive
     ) {
       return;
     }
@@ -87,7 +116,7 @@ export default function ResultPage() {
     }, 250);
 
     return () => window.clearTimeout(timer);
-  }, [autoSpeak, mode, result?.spokenResponse, speak, speechLanguage, speechRate]);
+  }, [autoSpeak, mode, result?.spokenResponse, speak, speechLanguage, speechRate, voiceAssistantActive]);
 
   if (!currentResult || !result) {
     return (
@@ -106,22 +135,6 @@ export default function ResultPage() {
       </main>
     );
   }
-
-  const repeatResult = () => {
-    if (!result.spokenResponse) return;
-    speak(result.spokenResponse, {
-      language: speechLanguage,
-      rate: speechRate,
-    });
-  };
-
-  const scanAgain = () => {
-    navigate(`/camera/${mode}`);
-  };
-
-  const goHome = () => {
-    navigate("/");
-  };
 
   const copy = RESULT_COPY[mode] || {
     eyebrow: "Result",

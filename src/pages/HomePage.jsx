@@ -118,10 +118,10 @@ export default function HomePage() {
   }, [navigate]);
 
   const activateFromGesture = useCallback(async () => {
-    if (voiceAssistantActive || isActivatingVoice || activationLockRef.current) return;
+    if (isActivatingVoice || activationLockRef.current) return;
     activationLockRef.current = true;
     try { await activateVoiceAssistant(); } finally { activationLockRef.current = false; }
-  }, [activateVoiceAssistant, isActivatingVoice, voiceAssistantActive]);
+  }, [activateVoiceAssistant, isActivatingVoice]);
 
   const handlePointerUp = useCallback((event) => {
     if (event.pointerType === "mouse") return;

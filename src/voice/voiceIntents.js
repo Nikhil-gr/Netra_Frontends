@@ -115,7 +115,7 @@ const DIRECT = [
       "repeat options",
     ],
   ],
-  ["scan_again", ["scan again", "describe again", "read again"]],
+  ["scan_again", ["scan again", "describe again", "read again", "redo", "again", "take another picture", "take another photo", "scan"]],
   [
     "repeat_direction",
     ["repeat direction", "repeat directions", "what's next", "where do i go"],

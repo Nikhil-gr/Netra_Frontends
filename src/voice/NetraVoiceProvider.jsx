@@ -160,11 +160,13 @@ export default function NetraVoiceProvider({ children }) {
 
   const activateVoiceAssistant = useCallback(async () => {
     if (activationRef.current) return activationRef.current;
-    if (voiceAssistantActive && voiceEnabled) {
-      firstActivationRef.current = true;
-      setActionsVersion((n) => n + 1);
-      return true;
-    }
+    
+    cancelConversation();
+    stopCurrentSpeech();
+    try {
+      window.speechSynthesis?.cancel();
+    } catch (_) { /* ignore */ }
+
     const pending = (async () => {
       setIsActivatingVoice(true);
       setFallbackMessage("");
@@ -183,6 +185,7 @@ export default function NetraVoiceProvider({ children }) {
         firstActivationRef.current = true;
         setVoiceAssistantActive(true);
         setVoiceEnabled(true);
+        setActionsVersion((n) => n + 1);
         return true;
       } catch {
         setFallbackMessage(
@@ -197,10 +200,10 @@ export default function NetraVoiceProvider({ children }) {
     activationRef.current = pending;
     return pending;
   }, [
+    cancelConversation,
     recognition.isSupported,
     recognition.unsupportedReason,
-    voiceAssistantActive,
-    voiceEnabled,
+    stopCurrentSpeech,
   ]);
 
   const ask = useCallback(
@@ -325,14 +328,13 @@ export default function NetraVoiceProvider({ children }) {
     [navigate, setWalkInitialLocation],
   );
 
-
-
   useEffect(() => {
     if (location.pathname === "/camera/assist") return undefined;
     cancelConversation();
     const version = versionRef.current;
     if (!voiceAssistantActive || !voiceEnabled || document.hidden)
       return undefined;
+
     const runHome = async () => {
       let prompt = firstActivationRef.current ? ACTIVATED : READY;
       firstActivationRef.current = false;
@@ -373,6 +375,7 @@ export default function NetraVoiceProvider({ children }) {
         }
       }
     };
+
     const runCamera = async (mode) => {
       const actions = actionsRef.current;
       if (actions.cameraError) {
@@ -419,15 +422,305 @@ export default function NetraVoiceProvider({ children }) {
         } else prompt = READY;
       }
     };
+
+    const runResult = async () => {
+      const resultObj = useNetraStore.getState().currentResult;
+      const resultMode = resultObj?.mode || "describe";
+      const spokenResponse = resultObj?.result?.spokenResponse;
+
+      if (firstActivationRef.current) {
+        firstActivationRef.current = false;
+        await speakAndWait(ACTIVATED);
+      } else if (spokenResponse && autoSpeak) {
+        await speakAndWait(spokenResponse);
+      }
+
+      let prompt =
+        "Would you like to repeat the result, scan again, or say Stop to exit? You can also say Describe, Read Text, Walk Assist, or Home.";
+
+      while (versionRef.current === version) {
+        const heard = await ask(prompt, version, { preferCommands: true });
+        prompt = "";
+        if (!heard) return;
+
+        const intent = parseVoiceIntent(heard);
+        if (intent.type === "repeat" || intent.type === "resume") {
+          if (spokenResponse) {
+            await speakAndWait(spokenResponse);
+          }
+          prompt =
+            "Would you like to repeat the result, scan again, or say Stop to exit?";
+        } else if (intent.type === "scan_again") {
+          return actionsRef.current.scanAgain
+            ? actionsRef.current.scanAgain()
+            : navigate(`/camera/${resultMode}`);
+        } else if (
+          [
+            "describe",
+            "read",
+            "walk",
+            "guide",
+            "emergency",
+            "history",
+            "settings",
+          ].includes(intent.type)
+        ) {
+          return performDirect(intent.type);
+        } else if (intent.type === "home" || intent.type === "back") {
+          return performDirect(intent.type);
+        } else if (intent.type === "help") {
+          await speakAndWait(GUIDE.result);
+          prompt = READY;
+        } else {
+          prompt =
+            "I didn't understand. Say Repeat, Scan Again, Describe, Read Text, Walk Assist, or Stop.";
+        }
+      }
+    };
+
+    const runGuide = async () => {
+      let prompt = firstActivationRef.current
+        ? ACTIVATED
+        : "You are on the User Guide screen. Say Describe, Read Text, Walk Assist, Emergency, or Home.";
+      firstActivationRef.current = false;
+
+      while (versionRef.current === version) {
+        const heard = await ask(prompt, version, { preferCommands: true });
+        prompt = "";
+        if (!heard) return;
+
+        const intent = parseVoiceIntent(heard);
+        if (intent.type === "help") {
+          await speakAndWait(GUIDE.home);
+          prompt = READY;
+        } else if (intent.type === "repeat" || intent.type === "resume") {
+          prompt = lastPromptRef.current || READY;
+        } else if (
+          [
+            "describe",
+            "read",
+            "walk",
+            "guide",
+            "emergency",
+            "history",
+            "settings",
+          ].includes(intent.type)
+        ) {
+          return performDirect(intent.type);
+        } else if (intent.type === "home" || intent.type === "back") {
+          return performDirect(intent.type);
+        } else {
+          prompt =
+            "I didn't understand. Say Describe, Read Text, Walk Assist, Guide, or Emergency.";
+        }
+      }
+    };
+
+    const runWalkSetup = async () => {
+      let prompt = firstActivationRef.current
+        ? ACTIVATED
+        : "Walk Assist setup. Tell me a destination, or say Describe, Read Text, or Home.";
+      firstActivationRef.current = false;
+
+      while (versionRef.current === version) {
+        const heard = await ask(prompt, version);
+        prompt = "";
+        if (!heard) return;
+
+        const intent = parseVoiceIntent(heard);
+        if (
+          [
+            "describe",
+            "read",
+            "walk",
+            "guide",
+            "emergency",
+            "history",
+            "settings",
+          ].includes(intent.type)
+        ) {
+          return performDirect(intent.type);
+        } else if (intent.type === "home" || intent.type === "back") {
+          return performDirect(intent.type);
+        } else if (actionsRef.current.searchDestination) {
+          return actionsRef.current.searchDestination(heard);
+        } else {
+          prompt = "Tell me a destination to search, or say Back.";
+        }
+      }
+    };
+
+    const runFindSetup = async () => {
+      let prompt = firstActivationRef.current
+        ? ACTIVATED
+        : "Find object mode. Tell me what object you want to find, or say Describe, Read Text, or Home.";
+      firstActivationRef.current = false;
+
+      while (versionRef.current === version) {
+        const heard = await ask(prompt, version);
+        prompt = "";
+        if (!heard) return;
+
+        const intent = parseVoiceIntent(heard);
+        if (
+          [
+            "describe",
+            "read",
+            "walk",
+            "guide",
+            "emergency",
+            "history",
+            "settings",
+          ].includes(intent.type)
+        ) {
+          return performDirect(intent.type);
+        } else if (intent.type === "home" || intent.type === "back") {
+          return performDirect(intent.type);
+        } else if (heard.trim()) {
+          const setFindQuery = useNetraStore.getState().setFindQuery;
+          setFindQuery(heard.trim());
+          return navigate("/camera/find");
+        } else {
+          prompt = "Say the name of an object, or say Describe, Read Text, or Home.";
+        }
+      }
+    };
+
+    const runHistory = async () => {
+      let prompt = firstActivationRef.current
+        ? ACTIVATED
+        : "History screen. Say Describe, Read Text, Walk Assist, Back, or Home.";
+      firstActivationRef.current = false;
+
+      while (versionRef.current === version) {
+        const heard = await ask(prompt, version, { preferCommands: true });
+        prompt = "";
+        if (!heard) return;
+
+        const intent = parseVoiceIntent(heard);
+        if (
+          [
+            "describe",
+            "read",
+            "walk",
+            "guide",
+            "emergency",
+            "history",
+            "settings",
+          ].includes(intent.type)
+        ) {
+          return performDirect(intent.type);
+        } else if (intent.type === "home" || intent.type === "back") {
+          return performDirect(intent.type);
+        } else {
+          prompt = "Say Describe, Read Text, Walk Assist, Back, or Home.";
+        }
+      }
+    };
+
+    const runSettings = async () => {
+      let prompt = firstActivationRef.current
+        ? ACTIVATED
+        : "Settings screen. Say Back or Home to return.";
+      firstActivationRef.current = false;
+
+      while (versionRef.current === version) {
+        const heard = await ask(prompt, version, { preferCommands: true });
+        prompt = "";
+        if (!heard) return;
+
+        const intent = parseVoiceIntent(heard);
+        if (
+          [
+            "describe",
+            "read",
+            "walk",
+            "guide",
+            "emergency",
+            "history",
+          ].includes(intent.type)
+        ) {
+          return performDirect(intent.type);
+        } else if (intent.type === "home" || intent.type === "back") {
+          return performDirect(intent.type);
+        } else {
+          prompt = "Say Back or Home to return.";
+        }
+      }
+    };
+
+    const runEmergency = async () => {
+      let prompt = firstActivationRef.current
+        ? ACTIVATED
+        : "Emergency screen. Say Call Emergency, or say Back or Home.";
+      firstActivationRef.current = false;
+
+      while (versionRef.current === version) {
+        const heard = await ask(prompt, version, { preferCommands: true });
+        prompt = "";
+        if (!heard) return;
+
+        const intent = parseVoiceIntent(heard);
+        if (intent.type === "emergency" || intent.type === "yes") {
+          return actionsRef.current.callEmergency?.() || performDirect("emergency");
+        } else if (intent.type === "home" || intent.type === "back") {
+          return performDirect(intent.type);
+        } else {
+          prompt = "Say Call Emergency, or say Back or Home.";
+        }
+      }
+    };
+
+    const runGeneric = async () => {
+      let prompt = firstActivationRef.current ? ACTIVATED : READY;
+      firstActivationRef.current = false;
+
+      while (versionRef.current === version) {
+        const heard = await ask(prompt, version, { preferCommands: true });
+        prompt = "";
+        if (!heard) return;
+
+        const intent = parseVoiceIntent(heard);
+        if (
+          [
+            "describe",
+            "read",
+            "walk",
+            "guide",
+            "emergency",
+            "history",
+            "settings",
+          ].includes(intent.type)
+        ) {
+          return performDirect(intent.type);
+        } else if (intent.type === "home" || intent.type === "back") {
+          return performDirect(intent.type);
+        } else {
+          prompt = "Say Describe, Read Text, Walk Assist, Guide, or Emergency.";
+        }
+      }
+    };
+
     if (location.pathname === "/") runHome();
     else if (location.pathname === "/camera/describe") runCamera("describe");
     else if (location.pathname === "/camera/read") runCamera("read");
+    else if (location.pathname === "/result") runResult();
+    else if (location.pathname === "/guide") runGuide();
+    else if (location.pathname === "/walk-assist") runWalkSetup();
+    else if (location.pathname === "/find") runFindSetup();
+    else if (location.pathname === "/history") runHistory();
+    else if (location.pathname === "/settings") runSettings();
+    else if (location.pathname === "/emergency-call") runEmergency();
+    else runGeneric();
+
     return cancelConversation;
   }, [
     actionsVersion,
     ask,
+    autoSpeak,
     cancelConversation,
     location.pathname,
+    navigate,
     performDirect,
     speakAndWait,
     voiceAssistantActive,
