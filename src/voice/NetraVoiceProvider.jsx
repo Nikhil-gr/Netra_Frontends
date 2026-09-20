@@ -152,7 +152,9 @@ export default function NetraVoiceProvider({ children }) {
           u.lang = "en-US";
           u.rate = 1;
           window.speechSynthesis.speak(u);
-        } catch (_) { /* optional */ }
+        } catch (_) {
+          /* optional */
+        }
       }
     },
     [autoSpeak, cancelConversation],
@@ -160,12 +162,14 @@ export default function NetraVoiceProvider({ children }) {
 
   const activateVoiceAssistant = useCallback(async () => {
     if (activationRef.current) return activationRef.current;
-    
+
     cancelConversation();
     stopCurrentSpeech();
     try {
       window.speechSynthesis?.cancel();
-    } catch (_) { /* ignore */ }
+    } catch (_) {
+      /* ignore */
+    }
 
     const pending = (async () => {
       setIsActivatingVoice(true);
@@ -279,6 +283,9 @@ export default function NetraVoiceProvider({ children }) {
                 : "Are you still there?";
           else if (misses === 2) next = "I still haven't heard you.";
           else {
+            if (location.pathname === "/walk-assist") {
+              return null;
+            }
             deactivateVoiceAssistant();
             return null;
           }
@@ -329,7 +336,12 @@ export default function NetraVoiceProvider({ children }) {
   );
 
   useEffect(() => {
-    if (location.pathname === "/camera/assist") return undefined;
+    if (
+      location.pathname === "/camera/assist" ||
+      location.pathname === "/walk-assist"
+    ) {
+      return undefined;
+    }
     cancelConversation();
     const version = versionRef.current;
     if (!voiceAssistantActive || !voiceEnabled || document.hidden)
@@ -581,7 +593,8 @@ export default function NetraVoiceProvider({ children }) {
           setFindQuery(heard.trim());
           return navigate("/camera/find");
         } else {
-          prompt = "Say the name of an object, or say Describe, Read Text, or Home.";
+          prompt =
+            "Say the name of an object, or say Describe, Read Text, or Home.";
         }
       }
     };
@@ -662,7 +675,9 @@ export default function NetraVoiceProvider({ children }) {
 
         const intent = parseVoiceIntent(heard);
         if (intent.type === "emergency" || intent.type === "yes") {
-          return actionsRef.current.callEmergency?.() || performDirect("emergency");
+          return (
+            actionsRef.current.callEmergency?.() || performDirect("emergency")
+          );
         } else if (intent.type === "home" || intent.type === "back") {
           return performDirect(intent.type);
         } else {
@@ -740,7 +755,12 @@ export default function NetraVoiceProvider({ children }) {
   // Only the provider's recognizer is used. Barge-in accepts exact stop phrases,
   // never ordinary commands, and is disabled when that phrase is in Netra's own speech.
   useEffect(() => {
-    if (location.pathname === "/camera/assist") return undefined;
+    if (
+      location.pathname === "/camera/assist" ||
+      location.pathname === "/walk-assist"
+    ) {
+      return undefined;
+    }
     let bargeTimer = null;
     const onStart = (event) => {
       if (!voiceAssistantActive || !voiceEnabled || document.hidden) return;
@@ -771,11 +791,13 @@ export default function NetraVoiceProvider({ children }) {
           .then((heard) => {
             if (bargeRef.current !== session) return;
             const intent = parseVoiceIntent(heard);
-            if (intent.type === "stop_talking" || intent.type === "stop_voice") {
+            if (
+              intent.type === "stop_talking" ||
+              intent.type === "stop_voice"
+            ) {
               stopCurrentSpeech();
               deactivateVoiceAssistant(true);
-            }
-            else if (attempt < 2) {
+            } else if (attempt < 2) {
               bargeTimer = window.setTimeout(
                 () => listenForStop(attempt + 1),
                 650,

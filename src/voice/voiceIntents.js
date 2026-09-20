@@ -115,7 +115,19 @@ const DIRECT = [
       "repeat options",
     ],
   ],
-  ["scan_again", ["scan again", "describe again", "read again", "redo", "again", "take another picture", "take another photo", "scan"]],
+  [
+    "scan_again",
+    [
+      "scan again",
+      "describe again",
+      "read again",
+      "redo",
+      "again",
+      "take another picture",
+      "take another photo",
+      "scan",
+    ],
+  ],
   [
     "repeat_direction",
     ["repeat direction", "repeat directions", "what's next", "where do i go"],
@@ -141,35 +153,54 @@ export function parseVoiceIntent(value, { expectsConfirmation = false } = {}) {
   }
 
   if (expectsConfirmation) {
+    const yesPhrases = [
+      "yes",
+      "yeah",
+      "yep",
+      "sure",
+      "okay",
+      "ok",
+      "correct",
+      "that is right",
+      "that's right",
+      "go ahead",
+      "go there",
+      "that is correct",
+      "that's correct",
+      "yes please",
+      "yes please proceed",
+      "yes that is right",
+      "yes that's right",
+      "yes correct",
+    ];
+    const noPhrases = [
+      "no",
+      "nope",
+      "not that",
+      "not that one",
+      "not now",
+      "next",
+      "another",
+      "another one",
+      "no that is not right",
+      "no that's not right",
+      "no not that",
+      "no not this",
+      "not this one",
+      "not this",
+      "no thanks",
+    ];
+
     if (
-      exact(text, [
-        "yes",
-        "yeah",
-        "yep",
-        "sure",
-        "okay",
-        "ok",
-        "correct",
-        "that's right",
-        "that is right",
-        "go ahead",
-        "go there",
-      ])
+      yesPhrases.some(
+        (phrase) => exact(text, [phrase]) || text.includes(phrase),
+      )
     ) {
       return { type: "yes", text };
     }
 
     if (
-      exact(text, [
-        "no",
-        "nope",
-        "not that",
-        "not that one",
-        "not now",
-        "next",
-        "another",
-        "another one",
-      ])
+      noPhrases.some((phrase) => exact(text, [phrase]) || text.includes(phrase))
     ) {
       return { type: "no", text };
     }
